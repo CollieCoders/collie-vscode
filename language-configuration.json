@@ -23,5 +23,25 @@
     ['"', '"'],
     ["'", "'"],
     ["`", "`"]
+  ],
+  "indentationRules": {
+    "increaseIndentPattern": "^\\s*(?:@(?:if|elseIf)\\b.*|\\S.*:\\s*)$",
+    "decreaseIndentPattern": "^\\s*(?:@else\\b.*|[\\]\\)\\}].*)$"
+  },
+  "onEnterRules": [
+    {
+      "beforeText": "^\\s*/\\*.*$",
+      "afterText": "^\\s*\\*/$",
+      "action": {
+        "indent": "indentOutdent",
+        "appendText": " * "
+      }
+    },
+    {
+      "beforeText": "^\\s*\\|.*$",
+      "action": {
+        "indent": "indent"
+      }
+    }
   ]
 }

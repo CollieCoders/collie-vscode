@@ -405,6 +405,12 @@ Improve editing feel without over-engineering.
 
 ---
 
+### Summary
+
+Stage 4 implemented: added conservative indentation rules for directives/colon-terminated lines plus On-Enter behaviors for block comments and pipe text, improving editing feel without being intrusive.
+
+---
+
 # Stage 5 — Packaging & installation
 
 ### Objective
