@@ -5,6 +5,7 @@
   "version": "0.0.1",
   "publisher": "collie",
   "license": "MIT",
+  "repository": "https://github.com/collie-lang/collie-vscode",
   "engines": {
     "vscode": "^1.87.0"
   },

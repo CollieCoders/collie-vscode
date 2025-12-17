@@ -432,6 +432,12 @@ Make the extension installable outside Dev Host.
 
 ---
 
+### Summary
+
+Stage 5 implemented: `pnpm run package` now produces a slim `.vsix` (documented in README along with install/dev-host steps), and a `.vscodeignore` plus repository metadata keep the published artifact tidy.
+
+---
+
 # Stage 6 — Future feature hooks (no implementation yet)
 
 ### Objective
