@@ -20,3 +20,9 @@ Unofficial VS Code integration for the Collie templating language. This reposito
 1. Run `pnpm watch` (optional) to keep the bundle up to date while editing.
 2. Press `F5` in VS Code to launch the Extension Development Host using the provided `.vscode/launch.json`.
 3. Open a `.collie` file in the Dev Host to verify syntax highlighting and editor behaviors live.
+
+## Roadmap
+
+- **Formatting (planned):** `src/features/formatting/formatProvider.ts` contains the stub that future formatters will extend.
+- **Diagnostics (planned):** placeholder architecture ensures we can add syntax/semantic checks without restructuring the extension.
+- **Language Server integration (possible):** project layout leaves room for an eventual LSP-based workflow once Collie tooling matures.

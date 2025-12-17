@@ -456,3 +456,11 @@ Prepare for formatting and richer language tooling.
 ### Acceptance Checklist
 
 * No structural rewrites needed to add features later
+
+---
+
+### Summary
+
+Stage 6 implemented: formatting stub remains ready and README now outlines the roadmap (formatting, diagnostics, potential LSP) so future enhancements can land without structural changes.
+
+---
