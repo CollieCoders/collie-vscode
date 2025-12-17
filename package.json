@@ -6,18 +6,28 @@
   "publisher": "collie",
   "license": "MIT",
   "repository": "https://github.com/collie-lang/collie-vscode",
+  "icon": "assets/collie-extension-icon.png",
   "engines": {
     "vscode": "^1.87.0"
   },
-  "categories": ["Programming Languages"],
+  "categories": [
+    "Programming Languages"
+  ],
   "main": "./dist/extension.cjs",
-  "activationEvents": ["onLanguage:collie"],
+  "activationEvents": [
+    "onLanguage:collie"
+  ],
   "contributes": {
     "languages": [
       {
         "id": "collie",
-        "extensions": [".collie"],
-        "aliases": ["Collie", "collie"],
+        "extensions": [
+          ".collie"
+        ],
+        "aliases": [
+          "Collie",
+          "collie"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -26,6 +36,13 @@
         "language": "collie",
         "scopeName": "source.collie",
         "path": "./syntaxes/collie.tmLanguage.json"
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "collie-icons",
+        "label": "Collie File Icons",
+        "path": "./icon-theme.json"
       }
     ]
   },
