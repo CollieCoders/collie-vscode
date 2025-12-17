@@ -380,6 +380,12 @@ Align highlighting closely with how Collie actually parses today.
 
 ---
 
+### Summary
+
+Stage 3 implemented: grammar now highlights props field names, optional `?`, and type annotations, recognizes directive parentheses as grouped sections, and covers both attached (`div.foo`) and spaced (`.foo`) class shorthand forms.
+
+---
+
 # Stage 4 — Language UX polish
 
 ### Objective

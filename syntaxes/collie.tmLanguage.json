@@ -7,6 +7,7 @@
     { "include": "#comments" },
     { "include": "#directives" },
     { "include": "#propsKeyword" },
+    { "include": "#propsFields" },
     { "include": "#tagHead" },
     { "include": "#classShorthand" },
     { "include": "#interpolation" },
@@ -41,11 +42,29 @@
     "directives": {
       "patterns": [
         {
-          "name": "keyword.control.directive.collie",
-          "match": "(?<!\\w)(@(if|elseIf|else))\\b",
-          "captures": {
+          "name": "meta.directive.collie",
+          "begin": "(?<!\\w)(@(if|elseIf|else))\\b",
+          "beginCaptures": {
             "1": { "name": "keyword.control.directive.collie" }
-          }
+          },
+          "end": "(?=$|\\s)",
+          "patterns": [
+            {
+              "name": "meta.directive.condition.collie",
+              "begin": "\\(",
+              "beginCaptures": {
+                "0": { "name": "punctuation.section.group.begin.collie" }
+              },
+              "end": "\\)",
+              "endCaptures": {
+                "0": { "name": "punctuation.section.group.end.collie" }
+              },
+              "patterns": [
+                { "include": "source.ts" },
+                { "include": "#interpolation" }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -57,6 +76,29 @@
           "captures": {
             "1": { "name": "storage.type.props.collie" }
           }
+        }
+      ]
+    },
+    "propsFields": {
+      "patterns": [
+        {
+          "name": "meta.props.field.collie",
+          "begin": "^\\s*([A-Za-z_][\\w-]*)(\\??)\\s*(:)",
+          "beginCaptures": {
+            "1": { "name": "variable.parameter.props.collie" },
+            "2": { "name": "keyword.operator.optional.collie" },
+            "3": { "name": "punctuation.separator.type.collie" }
+          },
+          "end": "$",
+          "patterns": [
+            {
+              "name": "storage.type.props.collie",
+              "match": ".+",
+              "captures": {
+                "0": { "name": "storage.type.props.collie" }
+              }
+            }
+          ]
         }
       ]
     },
@@ -76,6 +118,14 @@
         {
           "name": "entity.other.attribute-name.class.collie",
           "match": "\\.[A-Za-z_][\\w-]*"
+        },
+        {
+          "name": "entity.other.attribute-name.class.collie",
+          "match": "^\\s*(?=\\.)((\\.[A-Za-z_][\\w-]*)+)"
+        },
+        {
+          "name": "entity.other.attribute-name.class.collie",
+          "match": "(?<=[A-Za-z0-9\\]])(\\.[A-Za-z_][\\w-]*)+"
         }
       ]
     },
