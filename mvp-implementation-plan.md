@@ -1,353 +1,428 @@
-# VS Code Collie Language Extension Plan
+# Collie VS Code Language Extension – MVP Implementation Plan
 
 ## Context & Problem
 
-Collie (`collie-lang`) uses a Pug-inspired, indentation-based syntax in `.collie` files. The compiler/Vite pipeline works end-to-end, but `.collie` files in VS Code are currently **unstyled gray blobs**. We want an MVP that provides **usable syntax highlighting** (not perfection), and we want **comments supported from the start** (at least at the editor-highlighting level).
+Collie (`collie-lang`) is a JSX-adjacent, indentation-based templating language inspired by Pug, stored in `.collie` files. The compiler and Vite plugin are now working end-to-end, but `.collie` files in VS Code currently render as an unstyled gray blob.
 
-## Do NOT write tests
+The goal of this project is to create a **VS Code language extension** that provides:
 
-* Do **NOT** create unit tests, integration tests, snapshots, or test harnesses for this work.
-* Focus on shipping a working VS Code language extension.
+* Syntax highlighting for `.collie` files
+* Comment support from day one
+* Basic editor behavior (brackets, comments, auto-closing)
+* A project structure that is **ready for future language features** (formatting, diagnostics, etc.)
 
-## MVP Goal
-
-* `.collie` files get:
-
-  * Token coloring (keywords, tags/components, classes, interpolation, etc.)
-  * Comment highlighting (line + block)
-  * Basic editor behaviors (brackets, auto-closing pairs, indentation rules if practical)
-
-## Key MVP Design Decisions
-
-* **VS Code only** for now (no cross-editor packaging).
-* **Track current parser rules only**; grammar can evolve later.
-* Comments: implement **JS-style comments** in the highlighter:
-
-  * Line: `// ...`
-  * Block: `/* ... */`
-
-This is the least controversial and most ergonomic for JSX-adjacent syntax. (If you later want `#` or Pug-style comments, we can add patterns.)
+This is an **MVP focused on momentum**, not perfection.
 
 ---
 
-# Stage 0 — Create a dedicated extension workspace
+## Explicit Constraints
+
+### Do NOT write tests
+
+* Do **NOT** add unit tests, integration tests, snapshots, or test harnesses.
+* This project intentionally ships without tests at this stage.
+
+### Scope boundaries
+
+* Do **NOT** modify:
+
+  * `@collie-lang/compiler`
+  * `@collie-lang/vite`
+* This extension is editor-only.
+
+---
+
+## MVP Goals
+
+By the end of this plan:
+
+* `.collie` files in VS Code are syntax-highlighted
+* Comments (`//` and `/* */`) work
+* The extension can be installed via `.vsix`
+* The codebase is structured to later support:
+
+  * formatting
+  * diagnostics
+  * hover/completions
+  * potential language server integration
+
+---
+
+## Technology Decisions (Locked)
+
+* **Editor**: VS Code only
+* **Package manager**: `pnpm`
+* **Language**: TypeScript
+* **Bundler**: `esbuild`
+* **Extension host output format**: **CommonJS (CJS)**
+* **Syntax highlighting**: TextMate grammar
+* **Comments**: JavaScript-style (`//`, `/* */`)
+
+> Note: CommonJS is used **only** for the extension host bundle to avoid VS Code / Node compatibility issues. Source code may use modern ES syntax freely.
+
+---
+
+## Recommended Repository
+
+Create a **separate repository**:
+
+```
+collie-vscode
+```
+
+This keeps the extension lifecycle clean and avoids coupling with the compiler/Vite plugin.
+
+---
+
+## Recommended Folder & File Structure
+
+```
+collie-vscode/
+  .vscode/
+    launch.json
+    tasks.json
+
+  syntaxes/
+    collie.tmLanguage.json
+
+  src/
+    extension.ts
+    features/
+      formatting/
+        formatProvider.ts
+
+  language-configuration.json
+
+  package.json
+  tsconfig.json
+  tsconfig.build.json
+  esbuild.config.mjs
+
+  README.md
+  CHANGELOG.md
+  LICENSE
+  .editorconfig
+  .gitignore
+```
+
+### Structure rationale
+
+* `syntaxes/` → TextMate grammar (MVP highlighting)
+* `language-configuration.json` → comments, brackets, editor behavior
+* `src/extension.ts` → future runtime features (formatting, etc.)
+* `src/features/*` → modular expansion without rewrites
+* `esbuild.config.mjs` → fast, simple bundling
+
+---
+
+# Stage 0 — Repository setup
 
 ### Objective
 
-Create a separate folder/repo for the VS Code extension so it can ship independently of the compiler and Vite plugin.
+Create the base repo and directory structure.
 
 ### Deliverables
 
-* New folder/repo (choose one):
-
-  * `collie-vscode/` (recommended)
-  * or inside monorepo as `packages/vscode-collie/` (fine, but more release plumbing)
-* README with quick usage steps (“Install vsix / Run Extension / Open `.collie` file”).
+* Repository `collie-vscode`
+* Folder structure as defined above
+* Empty or placeholder files where appropriate
 
 ### User Pre-Flight Checklist
 
-* Decide where you want this to live:
-
-  * ✅ Separate repo: simplest distribution and VS Code dev loop
-  * ✅ Monorepo package: easier to keep in sync, but publishing is slightly fussier
-
-### Implementation Notes for the Agent
-
-* If separate repo: initialize `package.json`, `.gitignore`, `README.md`.
-* If monorepo: ensure pnpm workspace config won’t fight with `vsce` packaging later.
+* Node.js LTS installed
+* `pnpm` installed globally
 
 ### User Acceptance Checklist
 
-* You can open the folder alone in VS Code without monorepo dependency confusion.
-* The folder is “extension-ready” (clean root, no unrelated packages).
+* Repo opens cleanly in VS Code
+* No dependency on the Collie monorepo to run
 
 ---
 
-# Stage 1 — Scaffold a VS Code language extension (no grammar yet)
+# Stage 1 — DIY VS Code extension scaffolding (pnpm + CJS)
+
+## Stage 1.1 — Initialize project metadata
 
 ### Objective
 
-Generate a minimal VS Code extension that registers a language for `.collie`.
+Create a correct, future-ready VS Code extension manifest.
 
 ### Deliverables
 
-* A working VS Code extension scaffold containing:
+* `package.json` with:
 
-  * `package.json` with `contributes.languages`
-  * `language-configuration.json` (basic)
-  * `src/extension.ts` can be empty/minimal (no activation logic needed for TextMate-only)
-  * `tsconfig.json` / build scripts as needed (or pure JSON-only extension if you want to minimize code)
+#### Required fields
 
-### Recommended scaffolding approach
+* `name`
+* `displayName`
+* `version`
+* `publisher` (placeholder is fine)
+* `engines.vscode`
+* `categories: ["Programming Languages"]`
 
-* Use `yo code` **or** manually author a minimal extension. Either is fine.
-* Keep it as a “Language Support” extension, not a full-featured extension.
+#### Entry point
 
-### Required `package.json` contributions (MVP)
+* `main: "./dist/extension.cjs"`
 
-* Language registration:
+#### Activation
 
-  * language id: `collie`
-  * file extensions: `[".collie"]`
+* `activationEvents: ["onLanguage:collie"]`
+
+#### Language contributions
+
+* `contributes.languages`:
+
+  * id: `collie`
+  * extensions: `[".collie"]`
   * aliases: `["Collie", "collie"]`
+  * configuration: `./language-configuration.json`
 
-### `language-configuration.json` (MVP)
-
-* Comments:
-
-  * lineComment: `//`
-  * blockComment: `/* */`
-* Brackets / autoClosingPairs:
-
-  * `{ }`, `[ ]`, `( )`
-  * `{{ }}` (optional but nice; if you add it, ensure it doesn’t annoy you)
-  * quotes: `" "`, `' '`
-
-### User Pre-Flight Checklist
-
-* Install prerequisites (only if using generator):
-
-  * Node LTS + npm/pnpm
-  * `yo` + `generator-code` (if you choose generator)
-* Decide: TypeScript extension project vs “no code” extension.
-
-  * ✅ For this MVP, “no runtime code” is best (lighter, less maintenance).
-  * You can still keep a TS scaffold if you prefer.
-
-### User Acceptance Checklist
-
-* Press `F5` (Run Extension) and open a `.collie` file in the Extension Development Host.
-* VS Code recognizes the file language mode as **Collie** (bottom-right language indicator).
-
----
-
-# Stage 2 — Add a TextMate grammar file and wire it up
-
-### Objective
-
-Create a TextMate grammar that highlights the core Collie constructs.
-
-### Deliverables
-
-* `syntaxes/collie.tmLanguage.json`
-* `package.json` updated with `contributes.grammars` linking:
+* `contributes.grammars`:
 
   * language: `collie`
-  * scopeName: e.g. `source.collie`
+  * scopeName: `source.collie`
   * path: `./syntaxes/collie.tmLanguage.json`
 
-### Tokenization priorities (MVP “big wins”)
+#### Scripts (pnpm)
 
-Focus on high-value scopes that themes already color nicely:
+* `build`
+* `watch`
+* `package`
+* (optional) `lint`
 
-1. **Comments**
+#### Dev dependencies
 
-   * `// ...` → `comment.line.double-slash.collie`
-   * `/* ... */` → `comment.block.collie`
-
-2. **Control keywords**
-
-   * `@if`, `@elseIf`, `@else` → `keyword.control.collie`
-
-3. **`props` header**
-
-   * `props:` line head or `props` token → `keyword.other.props.collie`
-
-4. **Interpolation blocks**
-
-   * `{{` and `}}` punctuation → `punctuation.section.embedded.collie`
-   * content inside → `source.js.embedded.collie` (best effort)
-
-5. **Text line marker**
-
-   * Leading `|` → `punctuation.definition.string.collie`
-   * remaining text can be `string.quoted.other.collie`-ish (or plain `string.unquoted.collie`)
-
-6. **Element/component head**
-
-   * First token on a line like `div` / `Button` / `MyComponent` → `entity.name.tag.collie` (or `support.class.collie` for capitalized if you want)
-   * Class shorthand `.foo` segments → `entity.other.attribute-name.class.collie`
-
-### Grammar structure guidance (for the agent)
-
-Use a repository-based grammar with:
-
-* `#comments`
-* `#interpolation`
-* `#directives`
-* `#propsSection`
-* `#tagLine`
-* `#textLine`
-
-Ensure `#comments` is applied early/high-priority so comments “win” tokenization.
-
-### User Pre-Flight Checklist
-
-* None beyond Stage 1.
+* `typescript`
+* `esbuild`
+* `@types/vscode`
+* `@vscode/vsce`
 
 ### User Acceptance Checklist
 
-* In Extension Dev Host:
-
-  * `@if (...)` is colored like a keyword.
-  * `props:` stands out.
-  * `.some-class` segments are colored as class names.
-  * `{{something}}` is visibly distinct (delimiters + inner expression).
-  * `// comment` and `/* comment */` highlight correctly.
+* `pnpm install` succeeds
+* VS Code shows no manifest errors
 
 ---
 
-# Stage 3 — Shape the grammar to match Collie’s actual syntax rules
+## Stage 1.2 — TypeScript configuration
 
 ### Objective
 
-Make the grammar reflect the real-world Collie rules you have today, without trying to parse everything perfectly.
+Separate editor-time type checking from build output.
 
 ### Deliverables
 
-* Updated `collie.tmLanguage.json` patterns that match:
+* `tsconfig.json`:
 
-  * **2-space indentation style** (highlighting doesn’t need to enforce it, but avoid patterns that break on indentation)
-  * `.class` segments both in “attached” (`Button.primary`) and “spaced” (`.primary`) forms
-  * `props` fields like: `name?: SomeType` (highlight name, optional marker `?`, and type portion)
-  * `@elseIf` casing exactly (or accept `@elseif` if you want future-friendly; your call)
+  * `strict: true`
+  * `module: "ESNext"`
+  * `target: ES2020` (or newer)
+* `tsconfig.build.json`:
 
-### Suggested refinements (MVP-safe)
-
-* `props` block:
-
-  * Highlight the keyword `props` when it appears at start of line
-  * Highlight field names at start of indented lines following `props`
-  * Highlight `?` optional marker as punctuation
-  * Highlight type portion after `:` as `storage.type` or `support.type` (best effort)
-
-* Directives:
-
-  * `@if\s*\(` … `\)` treat parens as punctuation, inner as embedded JS best effort
-
-* Text lines:
-
-  * Support `| ... {{ expr }} ...` where interpolation can occur inside text
-
-### User Pre-Flight Checklist
-
-* Collect a few representative `.collie` examples from your real codebase (5–10 files).
-
-  * You don’t need to paste them here; just have them handy for validation in the Dev Host.
+  * includes only `src/**/*`
+  * no emit required (esbuild handles output)
 
 ### User Acceptance Checklist
 
-* Your real `.collie` examples look “meaningfully highlighted,” especially:
-
-  * props fields
-  * directives
-  * class shorthand
-  * interpolation
+* TypeScript works correctly in editor
+* Build does not rely on `tsc` emitting JS
 
 ---
 
-# Stage 4 — Add editor behavior polish (configuration + small UX wins)
+## Stage 1.3 — esbuild configuration (CommonJS output)
 
 ### Objective
 
-Make editing Collie feel less raw, without adding heavy features.
+Bundle extension host code safely for VS Code.
 
 ### Deliverables
 
-* Improved `language-configuration.json`:
+* `esbuild.config.mjs`:
 
-  * `indentationRules` (optional; only if it helps and doesn’t get annoying)
-  * `onEnterRules` (optional; helps maintain indentation)
-  * autoClosingPairs for `{{` `}}` (optional)
-
-### Practical MVP choices
-
-* Keep it minimal:
-
-  * Comments + brackets + quote auto-closing is enough
-* Indentation rules can be finicky; only add if you’re confident it won’t misbehave.
-
-### User Pre-Flight Checklist
-
-* Decide whether you want VS Code to auto-close `{{` to `}}`.
-
-  * Some people love it; some hate it. If unsure, skip for MVP.
+  * entry: `src/extension.ts`
+  * outfile: `dist/extension.cjs`
+  * platform: `node`
+  * format: `cjs`
+  * external: `["vscode"]`
+  * sourcemap: true
 
 ### User Acceptance Checklist
 
-* Typing `(`, `{`, `[` auto-closes.
-* Comments toggle works properly if you hit the comment shortcut on a line.
-* Editing feels “normal” in `.collie` files.
+* `pnpm run build` creates `dist/extension.cjs`
+* No runtime errors when launching extension
 
 ---
 
-# Stage 5 — Packaging and distribution (local vsix + optional Marketplace readiness)
+## Stage 1.4 — Extension entrypoint stub
 
 ### Objective
 
-Make it easy to install on your main machine and share with others.
+Prepare runtime hooks without implementing features yet.
 
 ### Deliverables
 
-* A repeatable packaging flow:
+* `src/extension.ts`:
 
-  * `vsce package` producing a `.vsix`
-  * Install via “Extensions: Install from VSIX…”
-* Versioning plan (simple semver)
-* Icon + basic metadata (optional but nice)
+  * exports `activate(context)` and `deactivate()`
+  * MVP behavior: no providers registered
+* `src/features/formatting/formatProvider.ts`:
 
-### Minimal metadata to include
-
-* `name`, `displayName`, `publisher` (for marketplace later)
-* `description`, `repository`
-* `engines.vscode`
-* `categories`: `["Programming Languages"]`
-
-### User Pre-Flight Checklist
-
-* If you want Marketplace later, you’ll need a publisher account.
-* For now, VSIX-only is fine.
+  * stub file only
+  * comment explaining future formatting approach
 
 ### User Acceptance Checklist
 
-* You can build a `.vsix`, install it into your real VS Code, and `.collie` files highlight without the Dev Host.
+* Extension activates when opening a `.collie` file
+* No errors in Extension Development Host console
 
 ---
 
-# Stage 6 — Maintenance hooks for future Collie syntax (lightweight process)
+## Stage 1.5 — Language configuration (comments from day one)
 
 ### Objective
 
-Keep the grammar from drifting as Collie evolves, without over-engineering.
+Define editor behavior for `.collie`.
 
 ### Deliverables
 
-* A “Grammar Update Checklist” section in README:
+* `language-configuration.json`:
 
-  * When adding syntax to Collie, update TextMate rules
-  * Add one example snippet per feature to a `samples/` folder (not tests—just examples)
-* A tiny “Known Limitations” list:
-
-  * TextMate grammar is regex-based; doesn’t fully parse JS inside `{{ }}`
-
-### User Pre-Flight Checklist
-
-* None.
+  * `lineComment: "//"`
+  * `blockComment: ["/*", "*/"]`
+  * bracket pairs: `()`, `{}`, `[]`
+  * autoClosingPairs and surroundingPairs
 
 ### User Acceptance Checklist
 
-* You have a clear way to evolve highlighting incrementally without turning this into a huge project.
+* Toggle comment works
+* Brackets auto-close
 
 ---
 
-## Notes for Copilot/Codex/Roo Code execution
+## Stage 1.6 — VS Code debug configuration
 
-When you tell an agent to implement a stage, include:
+### Objective
 
-* The stage number
-* “Do NOT write tests”
-* “Do not change Collie compiler or Vite plugin code” (unless you later decide to support comments in the compiler too)
+Make iteration frictionless.
 
-Example command to your agent:
+### Deliverables
 
-> Implement Stage 2 of the VS Code Collie language extension plan. Do NOT write tests. Only change files inside the VS Code extension project.
+* `.vscode/launch.json`:
+
+  * Extension Development Host launch
+* `.vscode/tasks.json`:
+
+  * build task
+  * optional watch task
+
+### User Acceptance Checklist
+
+* Pressing `F5` builds and launches extension
+
+---
+
+# Stage 2 — TextMate grammar (syntax highlighting MVP)
+
+### Objective
+
+Add meaningful syntax highlighting for Collie syntax.
+
+### Deliverables
+
+* `syntaxes/collie.tmLanguage.json` with patterns for:
+
+  * `//` and `/* */` comments (highest priority)
+  * `@if`, `@elseIf`, `@else`
+  * `props` keyword
+  * tag/component heads
+  * `.class` shorthand segments
+  * `{{ ... }}` interpolation
+  * `|` text lines with interpolation support
+
+### Acceptance Checklist
+
+* `.collie` files are no longer gray
+* Keywords, classes, interpolation are clearly visible
+
+---
+
+# Stage 3 — Grammar refinement to match current parser rules
+
+### Objective
+
+Align highlighting closely with how Collie actually parses today.
+
+### Deliverables
+
+* Highlight:
+
+  * `props` field names
+  * optional marker `?`
+  * type text after `:`
+  * directive parentheses
+  * attached and spaced class syntax
+
+### Acceptance Checklist
+
+* Real-world Collie files look consistently highlighted
+
+---
+
+# Stage 4 — Language UX polish
+
+### Objective
+
+Improve editing feel without over-engineering.
+
+### Deliverables
+
+* Optional indentation rules
+* Optional `onEnterRules`
+* Keep behavior conservative to avoid annoyance
+
+### Acceptance Checklist
+
+* Editing feels natural
+* No aggressive or broken auto-indentation
+
+---
+
+# Stage 5 — Packaging & installation
+
+### Objective
+
+Make the extension installable outside Dev Host.
+
+### Deliverables
+
+* `pnpm run package` produces `.vsix`
+* README documents:
+
+  * VSIX install steps
+  * Dev Host usage
+
+### Acceptance Checklist
+
+* Extension installs in your main VS Code
+* `.collie` files highlight correctly
+
+---
+
+# Stage 6 — Future feature hooks (no implementation yet)
+
+### Objective
+
+Prepare for formatting and richer language tooling.
+
+### Deliverables
+
+* Formatting stub file already exists
+* README roadmap section:
+
+  * Formatting (planned)
+  * Diagnostics (planned)
+  * LSP (possible)
+
+### Acceptance Checklist
+
+* No structural rewrites needed to add features later
