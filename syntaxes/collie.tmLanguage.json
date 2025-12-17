@@ -1,0 +1,118 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Collie",
+  "scopeName": "source.collie",
+  "fileTypes": ["collie"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#directives" },
+    { "include": "#propsKeyword" },
+    { "include": "#tagHead" },
+    { "include": "#classShorthand" },
+    { "include": "#interpolation" },
+    { "include": "#pipeText" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.collie",
+          "begin": "/\\*",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.begin.collie" }
+          },
+          "end": "\\*/",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.comment.end.collie" }
+          },
+          "patterns": [
+            { "include": "#comments" }
+          ]
+        },
+        {
+          "name": "comment.line.double-slash.collie",
+          "match": "//.*$",
+          "captures": {
+            "0": { "name": "punctuation.definition.comment.collie" }
+          }
+        }
+      ]
+    },
+    "directives": {
+      "patterns": [
+        {
+          "name": "keyword.control.directive.collie",
+          "match": "(?<!\\w)(@(if|elseIf|else))\\b",
+          "captures": {
+            "1": { "name": "keyword.control.directive.collie" }
+          }
+        }
+      ]
+    },
+    "propsKeyword": {
+      "patterns": [
+        {
+          "name": "storage.type.props.collie",
+          "match": "^\\s*(props)\\b",
+          "captures": {
+            "1": { "name": "storage.type.props.collie" }
+          }
+        }
+      ]
+    },
+    "tagHead": {
+      "patterns": [
+        {
+          "name": "entity.name.tag.collie",
+          "match": "^\\s*([A-Za-z][\\w-]*)",
+          "captures": {
+            "1": { "name": "entity.name.tag.collie" }
+          }
+        }
+      ]
+    },
+    "classShorthand": {
+      "patterns": [
+        {
+          "name": "entity.other.attribute-name.class.collie",
+          "match": "\\.[A-Za-z_][\\w-]*"
+        }
+      ]
+    },
+    "interpolation": {
+      "patterns": [
+        {
+          "name": "meta.interpolation.collie",
+          "begin": "\\{\\{",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.template-expression.begin.collie" }
+          },
+          "end": "\\}\\}",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.template-expression.end.collie" }
+          },
+          "contentName": "source.ts",
+          "patterns": [
+            { "include": "source.ts" }
+          ]
+        }
+      ]
+    },
+    "pipeText": {
+      "patterns": [
+        {
+          "name": "meta.text-line.collie",
+          "begin": "^\\s*(\\|)(?=\\s|$)",
+          "beginCaptures": {
+            "1": { "name": "keyword.operator.pipe.collie" }
+          },
+          "end": "$",
+          "contentName": "string.unquoted.collie",
+          "patterns": [
+            { "include": "#interpolation" }
+          ]
+        }
+      ]
+    }
+  }
+}

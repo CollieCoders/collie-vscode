@@ -352,6 +352,12 @@ Add meaningful syntax highlighting for Collie syntax.
 
 ---
 
+### Summary
+
+Stage 2 implemented: TextMate grammar now highlights comments, directives, the `props` keyword, tag/component heads, shorthand classes, interpolation blocks, and pipe text lines with interpolation support.
+
+---
+
 # Stage 3 — Grammar refinement to match current parser rules
 
 ### Objective
