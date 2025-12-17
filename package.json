@@ -1,0 +1,43 @@
+{
+  "name": "collie-vscode",
+  "displayName": "Collie",
+  "description": "VS Code language support for Collie templates",
+  "version": "0.0.1",
+  "publisher": "collie",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.87.0"
+  },
+  "categories": ["Programming Languages"],
+  "main": "./dist/extension.cjs",
+  "activationEvents": ["onLanguage:collie"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "collie",
+        "extensions": [".collie"],
+        "aliases": ["Collie", "collie"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "collie",
+        "scopeName": "source.collie",
+        "path": "./syntaxes/collie.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "package": "vsce package",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.87.0",
+    "@vscode/vsce": "^3.1.1",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.3"
+  }
+}

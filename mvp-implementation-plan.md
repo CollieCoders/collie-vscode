@@ -321,6 +321,12 @@ Make iteration frictionless.
 
 ---
 
+### Summary
+
+Stage 1 implemented: added package metadata/scripts, TypeScript configs, esbuild bundler setup, extension stubs, language configuration, and VS Code launch/tasks files. Verified `pnpm install` and `pnpm run build` locally (using a temporary Node download purely for verification because the system Node binary aborted during this session).
+
+---
+
 # Stage 2 — TextMate grammar (syntax highlighting MVP)
 
 ### Objective
