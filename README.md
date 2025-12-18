@@ -55,8 +55,31 @@ Unofficial VS Code integration for the Collie templating language. This reposito
 
 Paste the snippet into your workspace `.vscode/settings.json` or global settings file, or share it with the copied snippet command so teammates can reuse your palette.
 
+## Formatting & Format on Save
+
+- Collie ships a document formatter that parses the template into an AST and prints it back out with normalized indentation, selector spacing, pipe text alignment, props blocks, and conditional chains.
+- Run **Format Document** (⇧⌥F / ⇧⌘I) inside a `.collie` file to invoke the formatter. If the file is too malformed to parse, the extension falls back to a conservative whitespace cleanup so format-on-save never leaves the editor untouched.
+- Formatter options live under the `Collie` settings namespace:
+  - `Collie: Format > Indent Size` (`collie.format.indentSize`, default `2`)
+  - `Collie: Format > Prefer Compact Selectors` (`collie.format.preferCompactSelectors`, default `true`)
+  - `Collie: Format > Space Around Pipe` (`collie.format.spaceAroundPipe`, default `true`)
+  - `Collie: Format > Normalize Props Spacing` (`collie.format.normalizePropsSpacing`, default `true`)
+
+### Recommended settings snippet
+
+Add the following to your workspace `.vscode/settings.json` to use the Collie formatter by default and run it automatically on save:
+
+```jsonc
+"[collie]": {
+  "editor.defaultFormatter": "collie.collie-vscode",
+  "editor.formatOnSave": true
+}
+```
+
+_(Range formatting is not yet implemented; use document formatting for now.)_
+
 ## Roadmap
 
-- **Formatting (planned):** `src/features/formatting/formatProvider.ts` contains the stub that future formatters will extend.
+- **Formatter enhancements (future):** add selection/range formatting and smarter fallbacks once the core formatter proves stable.
 - **Diagnostics (planned):** placeholder architecture ensures we can add syntax/semantic checks without restructuring the extension.
 - **Language Server integration (possible):** project layout leaves room for an eventual LSP-based workflow once Collie tooling matures.
