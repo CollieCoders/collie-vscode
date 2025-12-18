@@ -58,6 +58,21 @@
           "default": true,
           "description": "Toggle Collie semantic token highlighting."
         },
+        "collie.features.diagnostics": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable experimental Collie diagnostics (Problems panel integration)."
+        },
+        "collie.features.completions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable experimental Collie completions (directives, tags, components)."
+        },
+        "collie.features.navigation": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable experimental Collie navigation features (Go to Definition, symbols)."
+        },
         "collie.format.indentSize": {
           "type": "number",
           "default": 2,
