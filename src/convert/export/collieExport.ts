@@ -1,3 +1,4 @@
+import { basename, extname } from 'path';
 import type { TextDocument } from 'vscode';
 import { parse } from '../../format/parser';
 import type { RootNode } from '../../format/parser/ast';
@@ -41,7 +42,11 @@ export function exportCollieDocument(document: TextDocument, target: CollieExpor
 
   const irNodes = convertCollieAstToIr(root);
 
-  const jsxOutput = irNodes.length > 0 ? printJsxNodes(irNodes, { target }) : buildEmptyJsxPlaceholder(target);
+  let jsxOutput = irNodes.length > 0 ? printJsxNodes(irNodes, { target }) : buildEmptyJsxPlaceholder(target);
+
+  if (target === 'TSX' && irNodes.length > 0) {
+    jsxOutput = wrapWithTsxComponent(jsxOutput, document);
+  }
 
   return {
     kind: 'success',
@@ -75,4 +80,49 @@ function describeDiagnostic(diagnostic: Diagnostic): string {
 
 function buildEmptyJsxPlaceholder(target: CollieExportTarget): string {
   return `/* Collie export (${target}) found no renderable nodes. */`;
+}
+
+function wrapWithTsxComponent(snippet: string, document: TextDocument): string {
+  const componentName = deriveComponentName(document);
+  const trimmedSnippet = snippet.trimEnd();
+  const indentedSnippet = indentMultiline(trimmedSnippet, '    ');
+  return `export function ${componentName}(): JSX.Element {\n  return (\n${indentedSnippet}\n  );\n}\n`;
+}
+
+function deriveComponentName(document: TextDocument): string {
+  if (document.uri.scheme !== 'file') {
+    return 'CollieExportComponent';
+  }
+
+  const fsPath = document.uri.fsPath;
+  const baseName = basename(fsPath, extname(fsPath));
+  const sanitized = sanitizeComponentName(baseName);
+  return `${sanitized}Export`;
+}
+
+function sanitizeComponentName(baseName: string | undefined): string {
+  if (!baseName) {
+    return 'Collie';
+  }
+
+  const tokens = baseName.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  const combined = tokens.map(token => capitalize(token)).join('') || 'Collie';
+  if (!/^[A-Za-z_]/.test(combined)) {
+    return `Collie${combined}`;
+  }
+  return combined;
+}
+
+function capitalize(token: string): string {
+  if (!token) {
+    return '';
+  }
+  return token[0].toUpperCase() + token.slice(1);
+}
+
+function indentMultiline(text: string, indent: string): string {
+  return text
+    .split('\n')
+    .map(line => `${indent}${line}`)
+    .join('\n');
 }
