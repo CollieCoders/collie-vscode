@@ -15,7 +15,8 @@
   ],
   "main": "./dist/extension.cjs",
   "activationEvents": [
-    "onLanguage:collie"
+    "onLanguage:collie",
+    "onCommand:collie.convertTsxSelectionToCollie"
   ],
   "contributes": {
     "languages": [
@@ -135,6 +136,11 @@
       {
         "command": "collie.copyTokenCustomizationSnippet",
         "title": "Collie: Copy Token Customization Snippet",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.convertTsxSelectionToCollie",
+        "title": "Collie: Convert JSX/TSX Selection to Collie",
         "category": "Collie"
       }
     ],
