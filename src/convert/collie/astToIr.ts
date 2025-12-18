@@ -3,6 +3,7 @@ import type {
   ElementNode,
   ExpressionNode,
   Node,
+  PropsDecl,
   RootNode,
   TextNode,
   TextPart
@@ -17,7 +18,14 @@ import {
 } from '../ir/nodes';
 
 export function convertCollieAstToIr(root: RootNode): readonly IrNode[] {
-  return convertNodes(root.children);
+  const nodes: IrNode[] = [];
+
+  if (root.props) {
+    nodes.push(createIrExpression(buildPropsComment(root.props)));
+  }
+
+  nodes.push(...convertNodes(root.children));
+  return nodes;
 }
 
 function convertNodes(nodes: readonly Node[]): IrNode[] {
@@ -41,7 +49,7 @@ function convertNode(node: Node): readonly IrNode[] {
     case 'Conditional':
       return [convertConditionalNode(node)];
     default:
-      return [];
+      return [createFallbackComment(`Unsupported Collie node: ${node.type}`)];
   }
 }
 
@@ -92,4 +100,19 @@ function convertConditionalNode(node: ConditionalNode): IrNode {
 
 function isTextChunk(part: TextPart): part is Extract<TextPart, { type: 'text' }> {
   return part.type === 'text';
+}
+
+function buildPropsComment(props: PropsDecl): string {
+  if (!props.fields.length) {
+    return '/* Collie props block present. Add TypeScript props manually. */';
+  }
+
+  const summary = props.fields
+    .map(field => `${field.name}${field.optional ? '?' : ''}: ${field.typeText}`)
+    .join(', ');
+  return `/* Collie props: ${summary} */`;
+}
+
+function createFallbackComment(reason: string) {
+  return createIrExpression(`/* Collie TODO: ${reason} */`);
 }
