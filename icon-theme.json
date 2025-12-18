@@ -1,0 +1,13 @@
+{
+  "iconDefinitions": {
+    "collie-file": {
+      "iconPath": "./assets/icons/collie-lang-file-icon-dark_mode.png",
+      "light": {
+        "iconPath": "./assets/icons/collie-lang-file-icon-light_mode.png"
+      }
+    }
+  },
+  "fileExtensions": {
+    "collie": "collie-file"
+  }
+}

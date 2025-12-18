@@ -1,0 +1,188 @@
+{
+  "name": "collie-vscode",
+  "displayName": "Collie",
+  "description": "VS Code language support for Collie templates",
+  "version": "0.0.1",
+  "publisher": "collie",
+  "license": "MIT",
+  "repository": "https://github.com/collie-lang/collie-vscode",
+  "icon": "assets/collie-extension-icon.png",
+  "engines": {
+    "vscode": "^1.87.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./dist/extension.cjs",
+  "activationEvents": [
+    "onLanguage:collie",
+    "onCommand:collie.convertTsxSelectionToCollie",
+    "onCommand:collie.copyAsJsx",
+    "onCommand:collie.copyAsTsx"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "collie",
+        "extensions": [
+          ".collie"
+        ],
+        "aliases": [
+          "Collie",
+          "collie"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "collie",
+        "scopeName": "source.collie",
+        "path": "./syntaxes/collie.tmLanguage.json"
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "collie-icons",
+        "label": "Collie File Icons",
+        "path": "./icon-theme.json"
+      }
+    ],
+    "configuration": {
+      "title": "Collie",
+      "properties": {
+        "collie.logging.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable verbose logging for the Collie extension."
+        },
+        "collie.semanticTokens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Toggle Collie semantic token highlighting."
+        },
+        "collie.features.diagnostics": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable experimental Collie diagnostics (Problems panel integration)."
+        },
+        "collie.features.completions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable experimental Collie completions (directives, tags, components)."
+        },
+        "collie.features.navigation": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable experimental Collie navigation features (Go to Definition, symbols)."
+        },
+        "collie.features.hover": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable experimental Collie hover info (directives, props, expressions)."
+        },
+        "collie.format.indentSize": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "description": "Number of spaces per indentation level when formatting Collie templates."
+        },
+        "collie.format.preferCompactSelectors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Emit selectors like `div.foo.bar` instead of inserting spaces before class shorthands."
+        },
+        "collie.format.spaceAroundPipe": {
+          "type": "boolean",
+          "default": true,
+          "description": "Insert a space between the pipe symbol and inline/standalone text."
+        },
+        "collie.format.normalizePropsSpacing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Normalize props declarations to use a single space after the colon."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "collie.customizeTokenColor",
+        "title": "Collie: Customize Token Color",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.customizeTagColor",
+        "title": "Collie: Customize Tag Color",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.customizeDirectiveColor",
+        "title": "Collie: Customize Directive Color",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.customizePropsFieldColor",
+        "title": "Collie: Customize Props Field Color",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.customizeClassShorthandColor",
+        "title": "Collie: Customize Class Shorthand Color",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.resetTokenCustomization",
+        "title": "Collie: Reset Token Customization",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.copyTokenCustomizationSnippet",
+        "title": "Collie: Copy Token Customization Snippet",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.convertTsxSelectionToCollie",
+        "title": "Collie: Convert JSX/TSX Selection to Collie",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.copyAsJsx",
+        "title": "Collie: Copy as JSX",
+        "description": "Convert the active Collie document into JSX and copy it to the clipboard.",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.copyAsTsx",
+        "title": "Collie: Copy as TSX",
+        "description": "Convert the active Collie document into a typed TSX snippet and copy it to the clipboard.",
+        "category": "Collie"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "collie.customizeTokenColor",
+          "when": "editorLangId == collie",
+          "group": "navigation@99"
+        },
+        {
+          "command": "collie.resetTokenCustomization",
+          "when": "editorLangId == collie",
+          "group": "navigation@100"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "package": "vsce package",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.87.0",
+    "@vscode/vsce": "^3.1.1",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.3"
+  }
+}
