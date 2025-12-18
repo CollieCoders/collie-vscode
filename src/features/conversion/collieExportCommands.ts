@@ -42,7 +42,9 @@ async function runCopyCommand(context: FeatureContext, target: CollieExportTarge
     return;
   }
 
-  window.showInformationMessage(`Collie export parsed the document for ${target}. JSX printing coming soon.`);
+  window.showInformationMessage(
+    `Collie export generated a ${target} snippet. See ${OUTPUT_CHANNEL_NAME} output for details.`
+  );
 }
 
 function logExportResult(

@@ -4,6 +4,7 @@ import type { RootNode } from '../../format/parser/ast';
 import type { Diagnostic } from '../../format/parser/diagnostics';
 import { convertCollieAstToIr } from '../collie/astToIr';
 import type { IrNode } from '../ir/nodes';
+import { printJsxNodes } from '../tsx/print';
 
 export type CollieExportTarget = 'JSX' | 'TSX';
 
@@ -40,13 +41,15 @@ export function exportCollieDocument(document: TextDocument, target: CollieExpor
 
   const irNodes = convertCollieAstToIr(root);
 
+  const jsxOutput = irNodes.length > 0 ? printJsxNodes(irNodes, { target }) : buildEmptyJsxPlaceholder(target);
+
   return {
     kind: 'success',
     target,
     ast: root,
     diagnostics,
     irNodes,
-    outputText: formatParseSuccessPlaceholder(target, root, irNodes)
+    outputText: jsxOutput
   };
 }
 
@@ -70,14 +73,6 @@ function describeDiagnostic(diagnostic: Diagnostic): string {
   return `${diagnostic.message}${code} at ${locationText}`;
 }
 
-function formatParseSuccessPlaceholder(
-  target: CollieExportTarget,
-  root: RootNode,
-  irNodes: readonly IrNode[]
-): string {
-  const topLevelCount = root.children.length;
-  const irCount = irNodes.length;
-  return `/* Collie export placeholder (${target}). Parsed ${topLevelCount} top-level node${
-    topLevelCount === 1 ? '' : 's'
-  } and produced ${irCount} IR node${irCount === 1 ? '' : 's'}. */`;
+function buildEmptyJsxPlaceholder(target: CollieExportTarget): string {
+  return `/* Collie export (${target}) found no renderable nodes. */`;
 }
