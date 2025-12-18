@@ -34,5 +34,6 @@ export async function activateFeatures(extensionContext: ExtensionContext, logge
 import './featureFlags';
 import './formatting/formatProvider';
 import './semanticTokens/provider';
+import './navigation/documentSymbols';
 import './diagnostics/provider';
 import './customization/commands';

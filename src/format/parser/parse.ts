@@ -8,7 +8,7 @@ import type {
   RootNode,
   TextNode
 } from './ast';
-import { type Diagnostic, type DiagnosticCode, createSpan } from './diagnostics';
+import { type Diagnostic, type DiagnosticCode, type SourceSpan, createSpan } from './diagnostics';
 
 export interface ParseResult {
   root: RootNode;
@@ -31,10 +31,7 @@ interface StackItem {
 
 interface BranchLocation {
   branch: ConditionalBranch;
-  line: number;
-  column: number;
-  lineOffset: number;
-  length: number;
+  span: SourceSpan;
 }
 
 interface ConditionalChainState {
@@ -56,6 +53,7 @@ export function parse(source: string): ParseResult {
 
   const normalized = source.replace(/\r\n?/g, '\n');
   const lines = normalized.split('\n');
+  root.span = createSpan(1, 1, Math.max(normalized.length, 1), 0);
 
   let offset = 0;
 
@@ -151,7 +149,10 @@ export function parse(source: string): ParseResult {
           trimmed.length
         );
       } else {
-        root.props = { fields: [] };
+        root.props = {
+          fields: [],
+          span: createSpan(lineNumber, indent + 1, Math.max(trimmed.length, 1), lineOffset)
+        };
         propsBlockLevel = level;
       }
       continue;
@@ -191,17 +192,14 @@ export function parse(source: string): ParseResult {
       if (!header) {
         continue;
       }
-      const chain: ConditionalNode = { type: 'Conditional', branches: [] };
-      const branch: ConditionalBranch = { test: header.test, body: [] };
+      const chain: ConditionalNode = { type: 'Conditional', branches: [], span: header.span };
+      const branch: ConditionalBranch = { test: header.test, body: [], span: header.span };
       chain.branches.push(branch);
       parent.children.push(chain);
       conditionalChains.set(level, { node: chain, level, hasElse: false });
       branchLocations.push({
         branch,
-        line: lineNumber,
-        column: indent + 1,
-        lineOffset,
-        length: header.directiveLength
+        span: header.span
       });
       if (header.inlineBody) {
         const inlineNode = parseInlineNode(
@@ -257,14 +255,11 @@ export function parse(source: string): ParseResult {
       if (!header) {
         continue;
       }
-      const branch: ConditionalBranch = { test: header.test, body: [] };
+      const branch: ConditionalBranch = { test: header.test, body: [], span: header.span };
       chain.node.branches.push(branch);
       branchLocations.push({
         branch,
-        line: lineNumber,
-        column: indent + 1,
-        lineOffset,
-        length: header.directiveLength
+        span: header.span
       });
       if (header.inlineBody) {
         const inlineNode = parseInlineNode(
@@ -313,15 +308,12 @@ export function parse(source: string): ParseResult {
       if (!header) {
         continue;
       }
-      const branch: ConditionalBranch = { test: undefined, body: [] };
+      const branch: ConditionalBranch = { test: undefined, body: [], span: header.span };
       chain.node.branches.push(branch);
       chain.hasElse = true;
       branchLocations.push({
         branch,
-        line: lineNumber,
-        column: indent + 1,
-        lineOffset,
-        length: header.directiveLength
+        span: header.span
       });
       if (header.inlineBody) {
         const inlineNode = parseInlineNode(
@@ -367,14 +359,17 @@ export function parse(source: string): ParseResult {
 
   for (const info of branchLocations) {
     if (info.branch.body.length === 0) {
+      const span = info.span;
+      const spanLength = Math.max(span.end.offset - span.start.offset, 1);
+      const lineOffset = span.start.offset - (span.start.col - 1);
       pushDiag(
         diagnostics,
         'COLLIE208',
         'Conditional branches must include an inline body or indented block.',
-        info.line,
-        info.column,
-        info.lineOffset,
-        info.length || 3
+        span.start.line,
+        span.start.col,
+        lineOffset,
+        spanLength
       );
     }
   }
@@ -394,7 +389,7 @@ interface ConditionalHeaderResult {
   test?: string;
   inlineBody?: string;
   inlineColumn?: number;
-  directiveLength: number;
+  span: SourceSpan;
 }
 
 function parseConditionalHeader(
@@ -443,7 +438,7 @@ function parseConditionalHeader(
     test,
     inlineBody: inlineBody.length ? inlineBody : undefined,
     inlineColumn,
-    directiveLength: trimmed.length || 3
+    span: createSpan(lineNumber, column, Math.max(trimmed.length, 1), lineOffset)
   };
 }
 
@@ -477,7 +472,7 @@ function parseElseHeader(
   return {
     inlineBody: inlineBody.length ? inlineBody : undefined,
     inlineColumn,
-    directiveLength: trimmed.length || 4
+    span: createSpan(lineNumber, column, Math.max(trimmed.length, 1), lineOffset)
   };
 }
 
@@ -538,6 +533,7 @@ function parseTextLine(
   placement: 'inline' | 'block' = 'block'
 ): TextNode | null {
   const trimmed = lineContent.trimEnd();
+  const span = createSpan(lineNumber, column, Math.max(trimmed.length || 1, 1), lineOffset);
   let payload = trimmed.slice(1);
   let payloadColumn = column + 1;
 
@@ -618,7 +614,7 @@ function parseTextLine(
     cursor = exprEnd + 2;
   }
 
-  return { type: 'Text', parts, placement };
+  return { type: 'Text', parts, placement, span };
 }
 
 function parseExpressionLine(
@@ -629,6 +625,7 @@ function parseExpressionLine(
   diagnostics: Diagnostic[]
 ): ExpressionNode | null {
   const trimmed = line.trimEnd();
+  const span = createSpan(lineNumber, column, Math.max(trimmed.length || 1, 1), lineOffset);
   const closeIndex = trimmed.indexOf('}}');
   if (closeIndex === -1) {
     pushDiag(
@@ -668,7 +665,7 @@ function parseExpressionLine(
     return null;
   }
 
-  return { type: 'Expression', value: inner };
+  return { type: 'Expression', value: inner, span };
 }
 
 
@@ -722,6 +719,7 @@ function parseElement(
   lineOffset: number,
   diagnostics: Diagnostic[]
 ): ElementNode | null {
+  const span = createSpan(lineNumber, column, Math.max(line.length, 1), lineOffset);
   // Split selector-style syntax first (div.welcome.big)
   const selectorMatch = line.match(/^([A-Za-z][A-Za-z0-9_$]*)(\.[A-Za-z0-9_-]+)*/);
   if (!selectorMatch) {
@@ -809,7 +807,8 @@ function parseElement(
     type: 'Element',
     name,
     classes,
-    children: inlineText ? [inlineText] : []
+    children: inlineText ? [inlineText] : [],
+    span
   };
 }
 
