@@ -16,7 +16,9 @@
   "main": "./dist/extension.cjs",
   "activationEvents": [
     "onLanguage:collie",
-    "onCommand:collie.convertTsxSelectionToCollie"
+    "onCommand:collie.convertTsxSelectionToCollie",
+    "onCommand:collie.copyAsJsx",
+    "onCommand:collie.copyAsTsx"
   ],
   "contributes": {
     "languages": [
@@ -141,6 +143,16 @@
       {
         "command": "collie.convertTsxSelectionToCollie",
         "title": "Collie: Convert JSX/TSX Selection to Collie",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.copyAsJsx",
+        "title": "Collie: Copy as JSX",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.copyAsTsx",
+        "title": "Collie: Copy as TSX",
         "category": "Collie"
       }
     ],
