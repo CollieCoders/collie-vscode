@@ -1,5 +1,7 @@
 import * as ts from 'typescript';
-import { commands, window, type OutputChannel } from 'vscode';
+import { basename, dirname, extname, join } from 'path';
+import { TextEncoder } from 'util';
+import { commands, env, Uri, window, workspace, type OutputChannel, type TextDocument } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
 import type { IrNode } from '../../convert/ir/nodes';
@@ -11,7 +13,12 @@ const COMMAND_ID = 'collie.convertTsxSelectionToCollie';
 const SUPPORTED_LANGUAGE_IDS = new Set(['typescriptreact', 'javascriptreact']);
 const OUTPUT_CHANNEL_NAME = 'Collie Conversion';
 
-function getSelectedText() {
+interface SelectionContext {
+  readonly document: TextDocument;
+  readonly text: string;
+}
+
+function getSelectionContext(): SelectionContext | undefined {
   const editor = window.activeTextEditor;
   if (!editor) {
     window.showErrorMessage('Collie conversion requires an active TSX/JSX editor.');
@@ -29,27 +36,30 @@ function getSelectedText() {
     return undefined;
   }
 
-  return document.getText(selection);
+  return {
+    document,
+    text: document.getText(selection)
+  };
 }
 
 function registerConversionCommand(context: FeatureContext) {
   const outputChannel = window.createOutputChannel(OUTPUT_CHANNEL_NAME);
   context.register(outputChannel);
 
-  const disposable = commands.registerCommand(COMMAND_ID, () => {
-    const selectionText = getSelectedText();
-    if (!selectionText) {
+  const disposable = commands.registerCommand(COMMAND_ID, async () => {
+    const selection = getSelectionContext();
+    if (!selection) {
       return;
     }
 
     context.logger.info('Collie conversion command invoked.');
 
     try {
-      const parseResult = parseJsxSelection(selectionText);
+      const parseResult = parseJsxSelection(selection.text);
       const conversion = convertJsxNodesToIr(parseResult.rootNodes, parseResult.sourceFile);
       const collieText = printCollieDocument(conversion.nodes);
       logSelection(
-        selectionText,
+        selection.text,
         parseResult.rootNodes,
         parseResult.sourceFile,
         conversion.nodes,
@@ -57,6 +67,7 @@ function registerConversionCommand(context: FeatureContext) {
         conversion.diagnostics.warnings,
         outputChannel
       );
+      await deliverCollieOutput(selection.document, collieText);
       if (conversion.diagnostics.warnings.length > 0) {
         window.showWarningMessage('JSX parsed with warnings. See the Collie Conversion output for details.');
       } else {
@@ -130,4 +141,91 @@ function summarizeNodeText(node: ts.JsxChild, sourceFile: ts.SourceFile) {
 
   const maxLength = 80;
   return raw.length > maxLength ? `${raw.slice(0, maxLength - 1)}…` : raw;
+}
+
+async function deliverCollieOutput(document: TextDocument, collieText: string) {
+  if (!collieText.trim()) {
+    window.showWarningMessage('Collie conversion produced empty output. Nothing to deliver.');
+    return;
+  }
+
+  const action = await window.showInformationMessage(
+    'Collie conversion ready. Create a .collie file or copy to clipboard?',
+    'Create File',
+    'Copy to Clipboard'
+  );
+
+  if (!action) {
+    return;
+  }
+
+  if (action === 'Create File') {
+    await promptCreateCollieFile(document, collieText);
+    return;
+  }
+
+  await copyCollieToClipboard(collieText);
+}
+
+async function promptCreateCollieFile(document: TextDocument, collieText: string) {
+  const suggestedUri = suggestCollieFileUri(document);
+  const targetUri = await window.showSaveDialog({
+    defaultUri: suggestedUri,
+    filters: { Collie: ['collie'] },
+    saveLabel: 'Create Collie File'
+  });
+
+  if (!targetUri) {
+    return;
+  }
+
+  const exists = await fileExists(targetUri);
+  if (exists) {
+    const overwrite = await window.showWarningMessage(
+      `${targetUri.fsPath} already exists. Overwrite?`,
+      { modal: true },
+      'Overwrite'
+    );
+    if (overwrite !== 'Overwrite') {
+      window.showInformationMessage('Did not create Collie file.');
+      return;
+    }
+  }
+
+  const encoder = new TextEncoder();
+  await workspace.fs.writeFile(targetUri, encoder.encode(collieText));
+  const doc = await workspace.openTextDocument(targetUri);
+  await window.showTextDocument(doc);
+  window.showInformationMessage(`Created ${targetUri.fsPath}`);
+}
+
+async function copyCollieToClipboard(collieText: string) {
+  await env.clipboard.writeText(collieText);
+  const doc = await workspace.openTextDocument({
+    language: 'collie',
+    content: collieText
+  });
+  await window.showTextDocument(doc, { preview: true });
+  window.showInformationMessage('Copied Collie output to clipboard and opened a preview.');
+}
+
+function suggestCollieFileUri(document: TextDocument): Uri | undefined {
+  if (document.uri.scheme !== 'file') {
+    return undefined;
+  }
+
+  const fsPath = document.uri.fsPath;
+  const dir = dirname(fsPath);
+  const base = basename(fsPath, extname(fsPath));
+  const finalName = base && base.toLowerCase() !== 'index' ? base : 'CollieSelection';
+  return Uri.file(join(dir, `${finalName}.collie`));
+}
+
+async function fileExists(uri: Uri): Promise<boolean> {
+  try {
+    await workspace.fs.stat(uri);
+    return true;
+  } catch {
+    return false;
+  }
 }
