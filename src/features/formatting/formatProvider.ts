@@ -12,6 +12,9 @@ async function provideFormattingEdits(
 ) {
   try {
     const result = formatDocument(document);
+    if (result.usedFallback) {
+      ctx.logger.warn('Collie AST formatter failed; fallback formatter applied.', result.error);
+    }
     return result.edits;
   } catch (error) {
     ctx.logger.warn('Collie formatter failed; returning no edits.', error);
@@ -20,11 +23,14 @@ async function provideFormattingEdits(
 }
 
 function activateFormattingFeature(ctx: FeatureContext) {
-  const provider = languages.registerDocumentFormattingEditProvider({ language: 'collie' }, {
-    provideDocumentFormattingEdits(document, options, token) {
-      return provideFormattingEdits(document, options, token, ctx);
+  const provider = languages.registerDocumentFormattingEditProvider(
+    { language: 'collie' },
+    {
+      provideDocumentFormattingEdits(document, options, token) {
+        return provideFormattingEdits(document, options, token, ctx);
+      }
     }
-  });
+  );
 
   ctx.register(provider);
   ctx.logger.info('Collie document formatter registered.');
