@@ -32,3 +32,4 @@ export async function activateFeatures(extensionContext: ExtensionContext, logge
 
 // Ensure built-in feature modules register themselves when this module loads.
 import './formatting/formatProvider';
+import './semanticTokens/provider';
