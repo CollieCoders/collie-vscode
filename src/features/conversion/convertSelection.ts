@@ -1,6 +1,8 @@
-import { commands, window } from 'vscode';
+import * as ts from 'typescript';
+import { commands, window, type OutputChannel } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
+import { JsxParseError, parseJsxSelection } from '../../convert/tsx/parseSelection';
 
 const COMMAND_ID = 'collie.convertTsxSelectionToCollie';
 const SUPPORTED_LANGUAGE_IDS = new Set(['typescriptreact', 'javascriptreact']);
@@ -38,14 +40,62 @@ function registerConversionCommand(context: FeatureContext) {
     }
 
     context.logger.info('Collie conversion command invoked.');
-    outputChannel.appendLine('--- JSX Selection ---');
-    outputChannel.appendLine(selectionText);
-    outputChannel.appendLine('--- End Selection ---\n');
-    outputChannel.show(true);
-    window.showInformationMessage('Logged JSX selection to the Collie Conversion output channel.');
+
+    try {
+      const result = parseJsxSelection(selectionText);
+      logSelection(selectionText, result.rootNodes, result.sourceFile, outputChannel);
+      window.showInformationMessage('Parsed JSX selection. See the Collie Conversion output for details.');
+    } catch (error) {
+      if (error instanceof JsxParseError) {
+        context.logger.warn('Failed to parse JSX selection.', error);
+        window.showErrorMessage(error.message);
+        return;
+      }
+
+      context.logger.error('Unexpected error while parsing JSX selection.', error);
+      window.showErrorMessage('Unexpected error while parsing the JSX selection.');
+    }
   });
 
   context.register(disposable);
 }
 
 registerFeature(registerConversionCommand);
+
+function logSelection(
+  selectionText: string,
+  rootNodes: readonly ts.JsxChild[],
+  sourceFile: ts.SourceFile,
+  outputChannel: OutputChannel
+) {
+  outputChannel.appendLine('--- JSX Selection ---');
+  outputChannel.appendLine(selectionText);
+  outputChannel.appendLine('--- Parsed Nodes ---');
+
+  if (rootNodes.length === 0) {
+    outputChannel.appendLine('(No JSX nodes detected)');
+  } else {
+    for (const node of rootNodes) {
+      outputChannel.appendLine(describeJsxNode(node, sourceFile));
+    }
+  }
+
+  outputChannel.appendLine('--- End Selection ---\n');
+  outputChannel.show(true);
+}
+
+function describeJsxNode(node: ts.JsxChild, sourceFile: ts.SourceFile) {
+  const kind = ts.SyntaxKind[node.kind];
+  const preview = summarizeNodeText(node, sourceFile);
+  return `${kind}: ${preview}`;
+}
+
+function summarizeNodeText(node: ts.JsxChild, sourceFile: ts.SourceFile) {
+  const raw = node.getText(sourceFile).replace(/\s+/g, ' ').trim();
+  if (!raw) {
+    return '(whitespace)';
+  }
+
+  const maxLength = 80;
+  return raw.length > maxLength ? `${raw.slice(0, maxLength - 1)}…` : raw;
+}
