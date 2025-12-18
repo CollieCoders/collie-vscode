@@ -37,4 +37,5 @@ import './semanticTokens/provider';
 import './navigation/documentSymbols';
 import './diagnostics/provider';
 import './hover/provider';
+import './completions/provider';
 import './customization/commands';
