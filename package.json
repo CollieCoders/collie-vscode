@@ -148,11 +148,13 @@
       {
         "command": "collie.copyAsJsx",
         "title": "Collie: Copy as JSX",
+        "description": "Convert the active Collie document into JSX and copy it to the clipboard.",
         "category": "Collie"
       },
       {
         "command": "collie.copyAsTsx",
         "title": "Collie: Copy as TSX",
+        "description": "Convert the active Collie document into a typed TSX snippet and copy it to the clipboard.",
         "category": "Collie"
       }
     ],

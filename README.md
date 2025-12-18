@@ -94,6 +94,22 @@ The conversion intentionally favors progress over perfection:
 
 This workflow lets you incrementally migrate components: select a render subtree, run the command, review the logged IR/collie output for accuracy, and then paste or save the generated `.collie` file when you are satisfied.
 
+## Copy Collie to JSX/TSX (Priority 4B)
+
+Need to bail out temporarily? The escape hatch mirrors the conversion flow in reverse and keeps things non-destructive:
+
+1. Open the Collie file you want to share with a teammate who prefers JSX/TSX.
+2. Run **Collie: Copy as JSX** or **Collie: Copy as TSX** from the Command Palette.
+3. The extension parses the file, logs the AST/IR/diagnostics to the **Collie Export** output channel, copies the generated snippet to your clipboard, and opens an untitled preview for quick inspection.
+
+Key guardrails:
+
+- **Nothing is overwritten.** The `.collie` file stays untouched; output goes to the clipboard and preview only.
+- **Readable output.** JSX exports preserve your structure, class shorthands become `className="..."`, and Collie conditionals convert into logical/ternary expressions. TSX exports wrap the snippet in a conservative `export function NameExport(): JSX.Element` so strict projects can paste it directly.
+- **Transparent fallbacks.** If the parser encounters something it can't represent, a JSX comment such as `/* Collie TODO: props block present... */` appears in the snippet and matching notes are highlighted in the output channel. The command never fails silently.
+
+This gives teams confidence that they can round-trip between Collie and JSX while the Collie-specific tooling matures.
+
 ## Experimental Language Features (Priority 3)
 
 Priority 3 introduces best-effort editing ergonomics layered on top of the existing syntax/formatting support. These features are intentionally gated behind settings so you can opt in as they stabilize:
