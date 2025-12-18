@@ -4,6 +4,7 @@ import { registerFeature } from '..';
 import type { CollieSemanticTokenType } from '../semanticTokens/legend';
 import { applyTokenCustomizationRule, removeTokenCustomizationRule } from './settingsWriter';
 import { promptColorValue, promptConfigurationTarget, promptStyleSelection, promptTokenType } from './ui';
+import { inferTokenTypeFromContext } from './inference';
 
 interface CustomizationCommand {
   command: string;
@@ -28,7 +29,8 @@ async function runCustomizationFlow(tokenTypePreset?: CollieSemanticTokenType) {
     return;
   }
 
-  const tokenType = tokenTypePreset ?? (await promptTokenType(tokenTypePreset));
+  const inferredTokenType = tokenTypePreset ? undefined : inferTokenTypeFromContext();
+  const tokenType = tokenTypePreset ?? (await promptTokenType(inferredTokenType));
   if (!tokenType) {
     return;
   }
@@ -53,7 +55,8 @@ async function runResetFlow() {
     return;
   }
 
-  const tokenType = await promptTokenType();
+  const inferredTokenType = inferTokenTypeFromContext();
+  const tokenType = await promptTokenType(inferredTokenType);
   if (!tokenType) {
     return;
   }
