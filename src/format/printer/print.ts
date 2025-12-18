@@ -13,12 +13,14 @@ export interface PrintOptions {
   indentSize?: number;
   preferCompactSelectors?: boolean;
   spaceAroundPipe?: boolean;
+  normalizePropsSpacing?: boolean;
 }
 
 const DEFAULT_OPTIONS: Required<PrintOptions> = {
   indentSize: 2,
   preferCompactSelectors: true,
-  spaceAroundPipe: true
+  spaceAroundPipe: true,
+  normalizePropsSpacing: true
 };
 
 interface PrinterContext {
@@ -30,7 +32,8 @@ export function print(root: RootNode, options: PrintOptions = {}): string {
   const resolved: Required<PrintOptions> = {
     indentSize: options.indentSize ?? DEFAULT_OPTIONS.indentSize,
     preferCompactSelectors: options.preferCompactSelectors ?? DEFAULT_OPTIONS.preferCompactSelectors,
-    spaceAroundPipe: options.spaceAroundPipe ?? DEFAULT_OPTIONS.spaceAroundPipe
+    spaceAroundPipe: options.spaceAroundPipe ?? DEFAULT_OPTIONS.spaceAroundPipe,
+    normalizePropsSpacing: options.normalizePropsSpacing ?? DEFAULT_OPTIONS.normalizePropsSpacing
   };
 
   const ctx: PrinterContext = {
@@ -56,7 +59,8 @@ function printProps(props: PropsDecl, ctx: PrinterContext): string[] {
   for (const field of props.fields) {
     const indent = createIndent(ctx, 1);
     const optionalFlag = field.optional ? '?' : '';
-    lines.push(`${indent}${field.name}${optionalFlag}: ${field.typeText}`);
+    const separator = ctx.options.normalizePropsSpacing ? ': ' : ':';
+    lines.push(`${indent}${field.name}${optionalFlag}${separator}${field.typeText}`);
   }
   return lines;
 }

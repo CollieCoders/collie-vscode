@@ -57,6 +57,27 @@
           "type": "boolean",
           "default": true,
           "description": "Toggle Collie semantic token highlighting."
+        },
+        "collie.format.indentSize": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "description": "Number of spaces per indentation level when formatting Collie templates."
+        },
+        "collie.format.preferCompactSelectors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Emit selectors like `div.foo.bar` instead of inserting spaces before class shorthands."
+        },
+        "collie.format.spaceAroundPipe": {
+          "type": "boolean",
+          "default": true,
+          "description": "Insert a space between the pipe symbol and inline/standalone text."
+        },
+        "collie.format.normalizePropsSpacing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Normalize props declarations to use a single space after the colon."
         }
       }
     },
