@@ -44,7 +44,17 @@
         "label": "Collie File Icons",
         "path": "./icon-theme.json"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Collie",
+      "properties": {
+        "collie.logging.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable verbose logging for the Collie extension."
+        }
+      }
+    }
   },
   "scripts": {
     "build": "node esbuild.config.mjs",
