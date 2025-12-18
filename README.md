@@ -78,8 +78,29 @@ Add the following to your workspace `.vscode/settings.json` to use the Collie fo
 
 _(Range formatting is not yet implemented; use document formatting for now.)_
 
+## Experimental Language Features (Priority 3)
+
+Priority 3 introduces best-effort editing ergonomics layered on top of the existing syntax/formatting support. These features are intentionally gated behind settings so you can opt in as they stabilize:
+
+- **Diagnostics (`collie.features.diagnostics`)** – surfaces indentation errors, unknown directives, duplicate props, and malformed selectors in the Problems panel. Updates are throttled and never block typing.
+- **Outline & Go To Definition (`collie.features.navigation`)** – adds a document outline for props, top-level elements, and conditional branches, plus Cmd/Ctrl+Click navigation from component usages to same-folder or sibling-folder `.collie`/`.tsx` files.
+- **Hover Info (`collie.features.hover`)** – lightweight tooltips for directives (`@if`, `@elseIf`, `@else`), props fields, and inline `{{ }}` expressions.
+- **Completions (`collie.features.completions`)** – quick suggestions for directives, common HTML tags, and local component names discovered in the current file or sibling files. Component lists refresh automatically when files are added/removed.
+
+Enable any subset via Settings > Collie or directly in `.vscode/settings.json`:
+
+```jsonc
+"collie.features": {
+  "diagnostics": true,
+  "navigation": true,
+  "hover": true,
+  "completions": true
+}
+```
+
+All features run off the shared parser/AST cache introduced in Priority 2, so enabling multiple providers does not re-parse the document redundantly.
+
 ## Roadmap
 
-- **Formatter enhancements (future):** add selection/range formatting and smarter fallbacks once the core formatter proves stable.
-- **Diagnostics (planned):** placeholder architecture ensures we can add syntax/semantic checks without restructuring the extension.
-- **Language Server integration (possible):** project layout leaves room for an eventual LSP-based workflow once Collie tooling matures.
+- **Formatter enhancements:** add selection/range formatting and smarter fallbacks once the core formatter proves stable.
+- **Language Server integration (exploratory):** the current architecture leaves room for an eventual LSP-based workflow once Collie tooling matures further.
