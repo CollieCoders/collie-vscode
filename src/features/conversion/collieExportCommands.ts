@@ -61,7 +61,11 @@ function logExportResult(
   if (result.kind === 'success') {
     outputChannel.appendLine('--- AST (JSON) ---');
     outputChannel.appendLine(JSON.stringify(result.ast, null, 2));
-  } else if (result.diagnostics.length > 0) {
+    outputChannel.appendLine('--- IR (JSON) ---');
+    outputChannel.appendLine(JSON.stringify(result.irNodes, null, 2));
+  }
+
+  if (result.diagnostics.length > 0) {
     outputChannel.appendLine('--- Diagnostics ---');
     for (const diagnostic of result.diagnostics) {
       const location = diagnostic.span?.start;

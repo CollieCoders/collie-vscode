@@ -1,4 +1,4 @@
-import type { IrElement, IrExpression, IrNode, IrProp, IrText } from '../ir/nodes';
+import type { IrConditional, IrElement, IrExpression, IrNode, IrProp, IrText } from '../ir/nodes';
 
 export interface ColliePrintOptions {
   indentSize?: number;
@@ -57,6 +57,8 @@ function printNode(node: IrNode, level: number, ctx: PrinterContext, out: string
         printNode(child, level, ctx, out);
       }
       break;
+    case 'conditional':
+      throw new Error('Conditional IR nodes are not supported in the Collie printer.');
     default: {
       const exhaustive: never = node;
       throw new Error(`Unsupported IR node: ${(exhaustive as IrNode).kind}`);

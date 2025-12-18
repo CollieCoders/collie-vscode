@@ -1,4 +1,4 @@
-export type IrNode = IrElement | IrText | IrExpression | IrFragment;
+export type IrNode = IrElement | IrText | IrExpression | IrFragment | IrConditional;
 
 export interface IrElement {
   readonly kind: 'element';
@@ -31,6 +31,16 @@ export interface IrExpression {
 export interface IrFragment {
   readonly kind: 'fragment';
   readonly children: readonly IrNode[];
+}
+
+export interface IrConditionalBranch {
+  readonly test?: string;
+  readonly children: readonly IrNode[];
+}
+
+export interface IrConditional {
+  readonly kind: 'conditional';
+  readonly branches: readonly IrConditionalBranch[];
 }
 
 export function createIrElement(
@@ -76,6 +86,23 @@ export function createIrExpression(expressionText: string): IrExpression {
 export function createIrFragment(children: Iterable<IrNode>): IrFragment {
   return {
     kind: 'fragment',
+    children: Array.from(children)
+  };
+}
+
+export function createIrConditional(branches: Iterable<IrConditionalBranch>): IrConditional {
+  return {
+    kind: 'conditional',
+    branches: Array.from(branches)
+  };
+}
+
+export function createIrConditionalBranch(
+  test: string | undefined,
+  children: Iterable<IrNode>
+): IrConditionalBranch {
+  return {
+    test,
     children: Array.from(children)
   };
 }
