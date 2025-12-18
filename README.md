@@ -21,6 +21,11 @@ Unofficial VS Code integration for the Collie templating language. This reposito
 2. Press `F5` in VS Code to launch the Extension Development Host using the provided `.vscode/launch.json`.
 3. Open a `.collie` file in the Dev Host to verify syntax highlighting and editor behaviors live.
 
+## Semantic Tokens & Settings
+
+- Collie semantic tokens light up `.collie` files with type-aware colors. They are enabled by default and can be toggled via the `Collie: Semantic Tokens Enabled` (`collie.semanticTokens.enabled`) setting if you need to fall back to TextMate scopes temporarily.
+- Verbose extension logging can be enabled with `Collie: Logging Enabled` (`collie.logging.enabled`) for debugging activation issues.
+
 ## Roadmap
 
 - **Formatting (planned):** `src/features/formatting/formatProvider.ts` contains the stub that future formatters will extend.

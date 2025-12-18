@@ -52,6 +52,11 @@
           "type": "boolean",
           "default": false,
           "description": "Enable verbose logging for the Collie extension."
+        },
+        "collie.semanticTokens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Toggle Collie semantic token highlighting."
         }
       }
     }
