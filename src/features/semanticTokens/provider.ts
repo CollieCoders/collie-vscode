@@ -2,13 +2,20 @@ import { languages, SemanticTokensBuilder } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
 import { collieSemanticTokensLegend } from './legend';
+import { tokenizeCollieSemanticTokens } from './tokenize';
 
 async function registerCollieSemanticTokens(context: FeatureContext) {
   const provider = languages.registerDocumentSemanticTokensProvider(
     { language: 'collie' },
     {
-      async provideDocumentSemanticTokens() {
+      async provideDocumentSemanticTokens(document) {
         const builder = new SemanticTokensBuilder(collieSemanticTokensLegend);
+        const tokens = tokenizeCollieSemanticTokens(document.getText());
+
+        for (const token of tokens) {
+          builder.push(token.line, token.startCharacter, token.length, token.type, []);
+        }
+
         return builder.build();
       }
     },
