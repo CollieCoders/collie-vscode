@@ -2,6 +2,8 @@ import * as ts from 'typescript';
 import { commands, window, type OutputChannel } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
+import type { IrNode } from '../../convert/ir/nodes';
+import { convertJsxNodesToIr } from '../../convert/tsx/jsxToIr';
 import { JsxParseError, parseJsxSelection } from '../../convert/tsx/parseSelection';
 
 const COMMAND_ID = 'collie.convertTsxSelectionToCollie';
@@ -42,9 +44,21 @@ function registerConversionCommand(context: FeatureContext) {
     context.logger.info('Collie conversion command invoked.');
 
     try {
-      const result = parseJsxSelection(selectionText);
-      logSelection(selectionText, result.rootNodes, result.sourceFile, outputChannel);
-      window.showInformationMessage('Parsed JSX selection. See the Collie Conversion output for details.');
+      const parseResult = parseJsxSelection(selectionText);
+      const conversion = convertJsxNodesToIr(parseResult.rootNodes, parseResult.sourceFile);
+      logSelection(
+        selectionText,
+        parseResult.rootNodes,
+        parseResult.sourceFile,
+        conversion.nodes,
+        conversion.diagnostics.warnings,
+        outputChannel
+      );
+      if (conversion.diagnostics.warnings.length > 0) {
+        window.showWarningMessage('JSX parsed with warnings. See the Collie Conversion output for details.');
+      } else {
+        window.showInformationMessage('Parsed JSX selection. See the Collie Conversion output for details.');
+      }
     } catch (error) {
       if (error instanceof JsxParseError) {
         context.logger.warn('Failed to parse JSX selection.', error);
@@ -66,6 +80,8 @@ function logSelection(
   selectionText: string,
   rootNodes: readonly ts.JsxChild[],
   sourceFile: ts.SourceFile,
+  irNodes: readonly IrNode[],
+  warnings: readonly string[],
   outputChannel: OutputChannel
 ) {
   outputChannel.appendLine('--- JSX Selection ---');
@@ -77,6 +93,16 @@ function logSelection(
   } else {
     for (const node of rootNodes) {
       outputChannel.appendLine(describeJsxNode(node, sourceFile));
+    }
+  }
+
+  outputChannel.appendLine('--- Collie IR ---');
+  outputChannel.appendLine(JSON.stringify(irNodes, null, 2));
+
+  if (warnings.length > 0) {
+    outputChannel.appendLine('--- Warnings ---');
+    for (const warning of warnings) {
+      outputChannel.appendLine(`• ${warning}`);
     }
   }
 

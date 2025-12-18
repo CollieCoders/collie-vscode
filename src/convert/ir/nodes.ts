@@ -4,7 +4,7 @@ export interface IrElement {
   readonly kind: 'element';
   readonly tagName: string;
   readonly classes: readonly string[];
-  readonly props: readonly IrProp[];
+  readonly props: readonly (IrProp | IrExpression)[];
   readonly children: readonly IrNode[];
 }
 
@@ -37,7 +37,7 @@ export function createIrElement(
   tagName: string,
   options: {
     classes?: Iterable<string>;
-    props?: Iterable<IrProp>;
+    props?: Iterable<IrProp | IrExpression>;
     children?: Iterable<IrNode>;
   } = {}
 ): IrElement {
