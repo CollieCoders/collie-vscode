@@ -10,3 +10,6 @@ mvp-implementation-plan.md
 .editorconfig
 .gitignore
 .DS_Store
+.git/**
+__MACOSX/**
+*.vsix
