@@ -1,4 +1,4 @@
-import { commands, window, type OutputChannel, type TextDocument } from 'vscode';
+import { commands, env, window, workspace, type OutputChannel, type TextDocument } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
 import type { CollieExportResult, CollieExportTarget } from '../../convert/export/collieExport';
@@ -42,9 +42,7 @@ async function runCopyCommand(context: FeatureContext, target: CollieExportTarge
     return;
   }
 
-  window.showInformationMessage(
-    `Collie export generated a ${target} snippet. See ${OUTPUT_CHANNEL_NAME} output for details.`
-  );
+  await deliverExportSnippet(exportResult);
 }
 
 function logExportResult(
@@ -78,6 +76,16 @@ function logExportResult(
 
   outputChannel.appendLine('--- End Export ---\n');
   outputChannel.show(true);
+}
+
+async function deliverExportSnippet(result: Extract<CollieExportResult, { kind: 'success' }>) {
+  await env.clipboard.writeText(result.outputText);
+  const document = await workspace.openTextDocument({
+    language: result.target === 'TSX' ? 'typescriptreact' : 'javascriptreact',
+    content: result.outputText
+  });
+  await window.showTextDocument(document, { preview: true });
+  window.showInformationMessage(`Copied Collie ${result.target} snippet to clipboard and opened a preview.`);
 }
 
 function registerCollieExportCommands(context: FeatureContext) {
