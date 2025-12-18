@@ -2,18 +2,20 @@ import { EventEmitter, workspace } from 'vscode';
 import type { FeatureContext } from '.';
 import { registerFeature } from '.';
 
-export type CollieFeatureFlag = 'diagnostics' | 'completions' | 'navigation';
+export type CollieFeatureFlag = 'diagnostics' | 'completions' | 'navigation' | 'hover';
 
 export interface FeatureFlagSnapshot {
   diagnostics: boolean;
   completions: boolean;
   navigation: boolean;
+  hover: boolean;
 }
 
 const DEFAULT_FLAGS: FeatureFlagSnapshot = {
   diagnostics: false,
   completions: false,
-  navigation: false
+  navigation: false,
+  hover: false
 };
 
 let currentFlags: FeatureFlagSnapshot = readFeatureFlags();
@@ -35,12 +37,18 @@ function readFeatureFlags(): FeatureFlagSnapshot {
   return {
     diagnostics: config.get<boolean>('features.diagnostics', DEFAULT_FLAGS.diagnostics),
     completions: config.get<boolean>('features.completions', DEFAULT_FLAGS.completions),
-    navigation: config.get<boolean>('features.navigation', DEFAULT_FLAGS.navigation)
+    navigation: config.get<boolean>('features.navigation', DEFAULT_FLAGS.navigation),
+    hover: config.get<boolean>('features.hover', DEFAULT_FLAGS.hover)
   };
 }
 
 function snapshotsEqual(a: FeatureFlagSnapshot, b: FeatureFlagSnapshot): boolean {
-  return a.diagnostics === b.diagnostics && a.completions === b.completions && a.navigation === b.navigation;
+  return (
+    a.diagnostics === b.diagnostics &&
+    a.completions === b.completions &&
+    a.navigation === b.navigation &&
+    a.hover === b.hover
+  );
 }
 
 function activateFeatureFlagWatcher(context: FeatureContext) {

@@ -36,4 +36,5 @@ import './formatting/formatProvider';
 import './semanticTokens/provider';
 import './navigation/documentSymbols';
 import './diagnostics/provider';
+import './hover/provider';
 import './customization/commands';

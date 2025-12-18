@@ -73,6 +73,11 @@
           "default": false,
           "description": "Enable experimental Collie navigation features (Go to Definition, symbols)."
         },
+        "collie.features.hover": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable experimental Collie hover info (directives, props, expressions)."
+        },
         "collie.format.indentSize": {
           "type": "number",
           "default": 2,

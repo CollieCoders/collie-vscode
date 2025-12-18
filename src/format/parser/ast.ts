@@ -34,6 +34,7 @@ export interface TextChunk {
 export interface TextExprPart {
   type: 'expr';
   value: string;
+  span?: SourceSpan;
 }
 
 export interface ExpressionNode {
@@ -63,4 +64,5 @@ export interface PropsField {
   name: string;
   optional: boolean;
   typeText: string;
+  span?: SourceSpan;
 }

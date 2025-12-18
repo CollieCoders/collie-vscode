@@ -4,7 +4,7 @@ import type { FeatureContext } from '..';
 import { registerFeature } from '..';
 import type { ElementNode, Node, ConditionalNode, ConditionalBranch, PropsDecl } from '../../format/parser/ast';
 import type { SourceSpan } from '../../format/parser/diagnostics';
-import { parseCollieDocument } from '../../lang/parseDocument';
+import { getParsedDocument } from '../../lang/cache';
 import { isFeatureFlagEnabled } from '../featureFlags';
 
 function spanToRange(document: TextDocument, span?: SourceSpan): Range {
@@ -100,7 +100,7 @@ function buildNodeSymbol(document: TextDocument, node: Node): DocumentSymbol | n
 }
 
 function buildDocumentSymbols(document: TextDocument): DocumentSymbol[] {
-  const parsed = parseCollieDocument(document);
+  const parsed = getParsedDocument(document);
   const children: DocumentSymbol[] = [];
 
   if (parsed.ast.props) {

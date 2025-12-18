@@ -608,7 +608,10 @@ function parseTextLine(
         exprEnd - nextOpen
       );
     } else {
-      parts.push({ type: 'expr', value: inner });
+      const exprColumn = payloadColumn + nextOpen;
+      const exprLength = exprEnd - nextOpen + 2;
+      const exprSpan = createSpan(lineNumber, exprColumn, Math.max(exprLength, 1), lineOffset);
+      parts.push({ type: 'expr', value: inner, span: exprSpan });
     }
 
     cursor = exprEnd + 2;
@@ -705,10 +708,13 @@ function parsePropsField(
     return null;
   }
 
+  const span = createSpan(lineNumber, column, Math.max(line.length, 1), lineOffset);
+
   return {
     name,
     optional: optionalFlag === '?',
-    typeText
+    typeText,
+    span
   };
 }
 

@@ -8,7 +8,7 @@ import {
 import type { TextDocument } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
-import { parseCollieDocument } from '../../lang/parseDocument';
+import { getParsedDocument, invalidateParsedDocument } from '../../lang/cache';
 import type { ParsedDocument } from '../../lang';
 import type { Diagnostic as ParserDiagnostic, SourceSpan } from '../../format/parser/diagnostics';
 import { isFeatureFlagEnabled, onDidChangeFeatureFlags } from '../featureFlags';
@@ -155,7 +155,7 @@ function applyDiagnostics(
 
   let parsed: ParsedDocument | null = null;
   try {
-    parsed = parseCollieDocument(document);
+    parsed = getParsedDocument(document);
   } catch (error) {
     context.logger.error('Failed to parse Collie document for diagnostics.', error);
   }
@@ -204,6 +204,7 @@ function activateDiagnosticsProvider(context: FeatureContext) {
   context.register(
     workspace.onDidCloseTextDocument(document => {
       collection.delete(document.uri);
+      invalidateParsedDocument(document);
     })
   );
 
