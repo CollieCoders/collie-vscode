@@ -35,6 +35,7 @@ import './featureFlags';
 import './formatting/formatProvider';
 import './semanticTokens/provider';
 import './navigation/documentSymbols';
+import './navigation/definitionProvider';
 import './diagnostics/provider';
 import './hover/provider';
 import './completions/provider';

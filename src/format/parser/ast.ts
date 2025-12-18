@@ -15,6 +15,7 @@ export interface ElementNode {
   classes: string[];
   children: Node[];
   span?: SourceSpan;
+  nameSpan?: SourceSpan;
 }
 
 export interface TextNode {

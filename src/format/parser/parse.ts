@@ -745,6 +745,7 @@ function parseElement(
   const parts = raw.split('.');
   const name = parts[0];
   const classes = parts.slice(1);
+  const nameSpan = createSpan(lineNumber, column, Math.max(name.length, 1), lineOffset);
 
   let rest = line.slice(raw.length);
   let inlineText: TextNode | null = null;
@@ -814,7 +815,8 @@ function parseElement(
     name,
     classes,
     children: inlineText ? [inlineText] : [],
-    span
+    span,
+    nameSpan
   };
 }
 
