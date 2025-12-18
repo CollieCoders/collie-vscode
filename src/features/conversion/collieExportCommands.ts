@@ -1,12 +1,13 @@
-import { commands, window, type TextDocument } from 'vscode';
+import { commands, window, type OutputChannel, type TextDocument } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
+import type { CollieExportResult, CollieExportTarget } from '../../convert/export/collieExport';
+import { exportCollieDocument } from '../../convert/export/collieExport';
 
 const COLLIE_LANGUAGE_ID = 'collie';
 const COPY_AS_JSX_COMMAND = 'collie.copyAsJsx';
 const COPY_AS_TSX_COMMAND = 'collie.copyAsTsx';
-
-type ExportTarget = 'JSX' | 'TSX';
+const OUTPUT_CHANNEL_NAME = 'Collie Export';
 
 function requireActiveCollieDocument(): TextDocument | undefined {
   const editor = window.activeTextEditor;
@@ -23,7 +24,7 @@ function requireActiveCollieDocument(): TextDocument | undefined {
   return editor.document;
 }
 
-async function runCopyCommand(context: FeatureContext, target: ExportTarget) {
+async function runCopyCommand(context: FeatureContext, target: CollieExportTarget, outputChannel: OutputChannel) {
   const document = requireActiveCollieDocument();
   if (!document) {
     return;
@@ -33,19 +34,59 @@ async function runCopyCommand(context: FeatureContext, target: ExportTarget) {
   context.logger.info(`[${target}] Collie export command invoked for ${document.uri.toString(true)}.`);
   context.logger.info(`[${target}] Collie document contents:\n${documentText}`);
 
-  window.showInformationMessage(`Collie: Copy as ${target} command registered. Conversion coming soon.`);
+  const exportResult = exportCollieDocument(document, target);
+  logExportResult(document, documentText, exportResult, outputChannel);
+
+  if (exportResult.kind === 'failure') {
+    window.showWarningMessage(`Collie export could not parse the document. See ${OUTPUT_CHANNEL_NAME} output for details.`);
+    return;
+  }
+
+  window.showInformationMessage(`Collie export parsed the document for ${target}. JSX printing coming soon.`);
+}
+
+function logExportResult(
+  document: TextDocument,
+  sourceText: string,
+  result: CollieExportResult,
+  outputChannel: OutputChannel
+) {
+  outputChannel.appendLine(`--- Collie Export (${result.target}) ---`);
+  outputChannel.appendLine(`Document: ${document.uri.toString(true)}`);
+  outputChannel.appendLine('--- Source ---');
+  outputChannel.appendLine(sourceText || '(Empty document)');
+  outputChannel.appendLine('--- Output ---');
+  outputChannel.appendLine(result.outputText);
+
+  if (result.kind === 'success') {
+    outputChannel.appendLine('--- AST (JSON) ---');
+    outputChannel.appendLine(JSON.stringify(result.ast, null, 2));
+  } else if (result.diagnostics.length > 0) {
+    outputChannel.appendLine('--- Diagnostics ---');
+    for (const diagnostic of result.diagnostics) {
+      const location = diagnostic.span?.start;
+      const locationText = location ? ` (line ${location.line}, column ${location.col})` : '';
+      outputChannel.appendLine(`• ${diagnostic.message}${locationText}`);
+    }
+  }
+
+  outputChannel.appendLine('--- End Export ---\n');
+  outputChannel.show(true);
 }
 
 function registerCollieExportCommands(context: FeatureContext) {
+  const outputChannel = window.createOutputChannel(OUTPUT_CHANNEL_NAME);
+  context.register(outputChannel);
+
   context.register(
     commands.registerCommand(COPY_AS_JSX_COMMAND, () => {
-      return runCopyCommand(context, 'JSX');
+      return runCopyCommand(context, 'JSX', outputChannel);
     })
   );
 
   context.register(
     commands.registerCommand(COPY_AS_TSX_COMMAND, () => {
-      return runCopyCommand(context, 'TSX');
+      return runCopyCommand(context, 'TSX', outputChannel);
     })
   );
 }
