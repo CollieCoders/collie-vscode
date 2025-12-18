@@ -3,6 +3,7 @@ import { commands, window, type OutputChannel } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
 import type { IrNode } from '../../convert/ir/nodes';
+import { printCollieDocument } from '../../convert/collie/print';
 import { convertJsxNodesToIr } from '../../convert/tsx/jsxToIr';
 import { JsxParseError, parseJsxSelection } from '../../convert/tsx/parseSelection';
 
@@ -46,11 +47,13 @@ function registerConversionCommand(context: FeatureContext) {
     try {
       const parseResult = parseJsxSelection(selectionText);
       const conversion = convertJsxNodesToIr(parseResult.rootNodes, parseResult.sourceFile);
+      const collieText = printCollieDocument(conversion.nodes);
       logSelection(
         selectionText,
         parseResult.rootNodes,
         parseResult.sourceFile,
         conversion.nodes,
+        collieText,
         conversion.diagnostics.warnings,
         outputChannel
       );
@@ -81,6 +84,7 @@ function logSelection(
   rootNodes: readonly ts.JsxChild[],
   sourceFile: ts.SourceFile,
   irNodes: readonly IrNode[],
+  collieText: string,
   warnings: readonly string[],
   outputChannel: OutputChannel
 ) {
@@ -98,6 +102,8 @@ function logSelection(
 
   outputChannel.appendLine('--- Collie IR ---');
   outputChannel.appendLine(JSON.stringify(irNodes, null, 2));
+  outputChannel.appendLine('--- Collie Output ---');
+  outputChannel.appendLine(collieText || '(No Collie output generated)');
 
   if (warnings.length > 0) {
     outputChannel.appendLine('--- Warnings ---');
