@@ -16,6 +16,7 @@ export interface ElementNode {
 export interface TextNode {
   type: 'Text';
   parts: TextPart[];
+  placement: 'inline' | 'block';
 }
 
 export type TextPart = TextChunk | TextExprPart;

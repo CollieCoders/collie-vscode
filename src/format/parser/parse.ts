@@ -494,7 +494,7 @@ function parseInlineNode(
   }
 
   if (trimmed.startsWith('|')) {
-    return parseTextLine(trimmed, lineNumber, column, lineOffset, diagnostics);
+    return parseTextLine(trimmed, lineNumber, column, lineOffset, diagnostics, 'inline');
   }
 
   if (trimmed.startsWith('{{')) {
@@ -534,7 +534,8 @@ function parseTextLine(
   lineNumber: number,
   column: number,
   lineOffset: number,
-  diagnostics: Diagnostic[]
+  diagnostics: Diagnostic[],
+  placement: 'inline' | 'block' = 'block'
 ): TextNode | null {
   const trimmed = lineContent.trimEnd();
   let payload = trimmed.slice(1);
@@ -617,7 +618,7 @@ function parseTextLine(
     cursor = exprEnd + 2;
   }
 
-  return { type: 'Text', parts };
+  return { type: 'Text', parts, placement };
 }
 
 function parseExpressionLine(
@@ -762,7 +763,8 @@ function parseElement(
         lineNumber,
         column + consumed,
         lineOffset,
-        diagnostics
+        diagnostics,
+        'inline'
       );
       break;
     }
