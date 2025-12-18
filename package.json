@@ -90,6 +90,11 @@
         "command": "collie.resetTokenCustomization",
         "title": "Collie: Reset Token Customization",
         "category": "Collie"
+      },
+      {
+        "command": "collie.copyTokenCustomizationSnippet",
+        "title": "Collie: Copy Token Customization Snippet",
+        "category": "Collie"
       }
     ],
     "menus": {

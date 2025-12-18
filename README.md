@@ -27,6 +27,33 @@ Unofficial VS Code integration for the Collie templating language. This reposito
 - Verbose extension logging can be enabled with `Collie: Logging Enabled` (`collie.logging.enabled`) for debugging activation issues.
 - Use the Command Palette (`Collie: Customize Token Color`) or the editor context menu inside `.collie` files to pick a token category, choose a color/style, and have the extension write the appropriate `editor.semanticTokenColorCustomizations.rules[...]` entry to either workspace or user settings. The `Collie: Reset Token Customization` command removes a rule when you want to revert back to theme defaults.
 - Run the customization commands with your cursor on a tag, directive, props field, or class shorthand to have the extension pre-select that token type automatically; you can still override the choice in the picker if needed.
+- Share your favorite highlighting scheme by running `Collie: Copy Token Customization Snippet`, which copies only the Collie-related semantic token rules to the clipboard so you can paste them into a README or `.vscode/settings.json`.
+
+### Collie token types
+
+- `collieTag` – opening tag identifiers (e.g., `MyComponent`)
+- `collieClassShorthand` – `.class` shorthand segments in tag heads
+- `collieDirective` – directive keywords such as `@if`, `@elseIf`, `@else`
+- `colliePropsKeyword` – the `props` block header keyword
+- `colliePropsField` – field identifiers declared within `props` blocks
+- `collieInterpolation` – `{{ ... }}` interpolation expressions
+- `colliePipeText` – pipe text lines that begin with `|`
+- `collieComment` – block (`/* */`) and line (`//`) comments
+
+### Example customization snippet
+
+```jsonc
+"editor.semanticTokenColorCustomizations": {
+  "enabled": true,
+  "rules": {
+    "collieTag": { "foreground": "#C586C0", "bold": true },
+    "collieDirective": { "foreground": "#DCDCAA", "italic": true },
+    "colliePropsField": { "foreground": "#4EC9B0" }
+  }
+}
+```
+
+Paste the snippet into your workspace `.vscode/settings.json` or global settings file, or share it with the copied snippet command so teammates can reuse your palette.
 
 ## Roadmap
 

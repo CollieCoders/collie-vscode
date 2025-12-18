@@ -1,7 +1,9 @@
-import { commands, ConfigurationTarget, window } from 'vscode';
+import { commands, ConfigurationTarget, env, window, workspace } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
 import type { CollieSemanticTokenType } from '../semanticTokens/legend';
+import { collieSemanticTokenTypes } from '../semanticTokens/legend';
+import type { TokenCustomizationRule } from './settingsWriter';
 import { applyTokenCustomizationRule, removeTokenCustomizationRule } from './settingsWriter';
 import { promptColorValue, promptConfigurationTarget, promptStyleSelection, promptTokenType } from './ui';
 import { inferTokenTypeFromContext } from './inference';
@@ -18,6 +20,13 @@ const CUSTOMIZATION_COMMANDS: CustomizationCommand[] = [
   { command: 'collie.customizePropsFieldColor', tokenType: 'colliePropsField' },
   { command: 'collie.customizeClassShorthandColor', tokenType: 'collieClassShorthand' }
 ];
+
+type SemanticTokenCustomizationValue = {
+  enabled?: boolean;
+  rules?: Record<string, TokenCustomizationRule>;
+} | undefined;
+
+const tokenTypeSet = new Set<CollieSemanticTokenType>(collieSemanticTokenTypes as ReadonlyArray<CollieSemanticTokenType>);
 
 function describeTarget(target: ConfigurationTarget) {
   return target === ConfigurationTarget.Workspace ? 'workspace' : 'user';
@@ -65,6 +74,52 @@ async function runResetFlow() {
   window.showInformationMessage(`Reset ${tokenType} customization in ${describeTarget(target)} settings.`);
 }
 
+function getCollieCustomizationSubset(): SemanticTokenCustomizationValue {
+  const editorConfig = workspace.getConfiguration('editor');
+  const current = editorConfig.get<SemanticTokenCustomizationValue>('semanticTokenColorCustomizations');
+  const rules = current?.rules;
+
+  if (!rules) {
+    return undefined;
+  }
+
+  const collieRules: Record<string, TokenCustomizationRule> = {};
+
+  for (const [tokenType, rule] of Object.entries(rules)) {
+    if (tokenTypeSet.has(tokenType as CollieSemanticTokenType)) {
+      collieRules[tokenType] = rule;
+    }
+  }
+
+  if (Object.keys(collieRules).length === 0) {
+    return undefined;
+  }
+
+  return {
+    enabled: current?.enabled ?? true,
+    rules: collieRules
+  };
+}
+
+async function copyCustomizationSnippet() {
+  const subset = getCollieCustomizationSubset();
+  if (!subset) {
+    window.showInformationMessage('No Collie token customizations found to copy.');
+    return;
+  }
+
+  const snippet = JSON.stringify(
+    {
+      'editor.semanticTokenColorCustomizations': subset
+    },
+    null,
+    2
+  );
+
+  await env.clipboard.writeText(snippet);
+  window.showInformationMessage('Copied Collie semantic token customization snippet to clipboard.');
+}
+
 async function registerCustomizationCommands(context: FeatureContext) {
   for (const { command, tokenType } of CUSTOMIZATION_COMMANDS) {
     context.register(
@@ -75,6 +130,7 @@ async function registerCustomizationCommands(context: FeatureContext) {
   }
 
   context.register(commands.registerCommand('collie.resetTokenCustomization', runResetFlow));
+  context.register(commands.registerCommand('collie.copyTokenCustomizationSnippet', copyCustomizationSnippet));
 }
 
 registerFeature(registerCustomizationCommands);
