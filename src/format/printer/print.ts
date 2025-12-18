@@ -7,6 +7,7 @@ import type {
   RootNode,
   TextNode
 } from '../parser';
+import { buildTextPayload, formatInlinePipe } from './text';
 
 export interface PrintOptions {
   indentSize?: number;
@@ -87,7 +88,7 @@ function printElement(node: ElementNode, level: number, ctx: PrinterContext, out
   const inlineText = getInlineTextChild(node);
 
   if (inlineText) {
-    line += ' ' + formatPipeSegment(inlineText, ctx);
+    line += ' ' + formatInlinePipe(inlineText, ctx.options);
     out.push(line);
     return;
   }
@@ -121,34 +122,14 @@ function getInlineTextChild(node: ElementNode): TextNode | null {
 
 function printText(node: TextNode, level: number, ctx: PrinterContext, out: string[]) {
   const indent = createIndent(ctx, level);
-  out.push(`${indent}${formatBlockPipeSegment(node, ctx)}`);
-}
-
-function formatBlockPipeSegment(node: TextNode, ctx: PrinterContext): string {
   const payload = buildTextPayload(node);
-  if (!payload) {
-    return '|';
+  let line = indent + '|';
+  if (payload) {
+    line += ctx.options.spaceAroundPipe ? ` ${payload}` : payload;
+  } else if (ctx.options.spaceAroundPipe) {
+    line += ' ';
   }
-  return ctx.options.spaceAroundPipe ? `| ${payload}` : `|${payload}`;
-}
-
-function formatPipeSegment(node: TextNode, ctx: PrinterContext): string {
-  const payload = buildTextPayload(node);
-  if (!payload) {
-    return ctx.options.spaceAroundPipe ? '| ' : '|';
-  }
-  return ctx.options.spaceAroundPipe ? `| ${payload}` : `|${payload}`;
-}
-
-function buildTextPayload(node: TextNode): string {
-  return node.parts
-    .map(part => {
-      if (part.type === 'text') {
-        return part.value;
-      }
-      return `{{ ${part.value} }}`;
-    })
-    .join('');
+  out.push(line);
 }
 
 function printExpression(node: ExpressionNode, level: number, ctx: PrinterContext, out: string[]) {
@@ -190,7 +171,7 @@ function formatInlineBranchBody(nodes: Node[], ctx: PrinterContext): string | nu
     if (only.placement !== 'inline') {
       return null;
     }
-    return formatPipeSegment(only, ctx);
+    return formatInlinePipe(only, ctx.options);
   }
   if (only.type === 'Element') {
     return formatInlineElement(only, ctx);
@@ -208,7 +189,7 @@ function formatInlineElement(node: ElementNode, ctx: PrinterContext): string | n
   }
   const inlineText = getInlineTextChild(node);
   if (inlineText && node.children.length === 1) {
-    return `${selector} ${formatPipeSegment(inlineText, ctx)}`;
+    return `${selector} ${formatInlinePipe(inlineText, ctx.options)}`;
   }
   return null;
 }
