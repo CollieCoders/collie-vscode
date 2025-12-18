@@ -39,4 +39,5 @@ import './navigation/definitionProvider';
 import './diagnostics/provider';
 import './hover/provider';
 import './completions/provider';
+import './lang/cacheWatcher';
 import './customization/commands';

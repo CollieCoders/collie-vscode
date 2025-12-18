@@ -132,6 +132,29 @@ function activateDefinitionFeature(context: FeatureContext) {
   });
 
   context.register(provider);
+  const clearDefinitionCache = () => {
+    definitionCache.clear();
+  };
+  context.register(
+    workspace.onDidChangeWorkspaceFolders(() => {
+      clearDefinitionCache();
+    })
+  );
+  context.register(
+    workspace.onDidCreateFiles(() => {
+      clearDefinitionCache();
+    })
+  );
+  context.register(
+    workspace.onDidDeleteFiles(() => {
+      clearDefinitionCache();
+    })
+  );
+  context.register(
+    workspace.onDidRenameFiles(() => {
+      clearDefinitionCache();
+    })
+  );
   context.logger.info('Collie definition provider registered.');
 }
 

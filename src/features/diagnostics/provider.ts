@@ -14,6 +14,8 @@ import type { Diagnostic as ParserDiagnostic, SourceSpan } from '../../format/pa
 import { isFeatureFlagEnabled, onDidChangeFeatureFlags } from '../featureFlags';
 
 const SUPPORTED_DIRECTIVES = new Set(['@if', '@elseIf', '@else']);
+const DIAGNOSTIC_DEBOUNCE_MS = 200;
+const pendingDiagnostics = new Map<string, ReturnType<typeof setTimeout>>();
 
 function shouldHandleDocument(document: TextDocument): boolean {
   return document.languageId === 'collie';
@@ -172,6 +174,32 @@ function applyDiagnostics(
   collection.set(document.uri, diagnostics);
 }
 
+function scheduleDiagnostics(
+  document: TextDocument,
+  collection: ReturnType<typeof languages.createDiagnosticCollection>,
+  context: FeatureContext
+) {
+  const key = document.uri.toString();
+  const existing = pendingDiagnostics.get(key);
+  if (existing) {
+    clearTimeout(existing);
+  }
+  const handle = setTimeout(() => {
+    pendingDiagnostics.delete(key);
+    applyDiagnostics(document, collection, context);
+  }, DIAGNOSTIC_DEBOUNCE_MS);
+  pendingDiagnostics.set(key, handle);
+}
+
+function clearPendingDiagnostics(document: TextDocument) {
+  const key = document.uri.toString();
+  const handle = pendingDiagnostics.get(key);
+  if (handle) {
+    clearTimeout(handle);
+    pendingDiagnostics.delete(key);
+  }
+}
+
 function refreshOpenDocuments(
   collection: ReturnType<typeof languages.createDiagnosticCollection>,
   context: FeatureContext
@@ -197,12 +225,13 @@ function activateDiagnosticsProvider(context: FeatureContext) {
 
   context.register(
     workspace.onDidChangeTextDocument(event => {
-      applyDiagnostics(event.document, collection, context);
+      scheduleDiagnostics(event.document, collection, context);
     })
   );
 
   context.register(
     workspace.onDidCloseTextDocument(document => {
+      clearPendingDiagnostics(document);
       collection.delete(document.uri);
       invalidateParsedDocument(document);
     })

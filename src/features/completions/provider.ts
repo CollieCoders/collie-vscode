@@ -193,6 +193,26 @@ function activateCompletionFeature(context: FeatureContext) {
   );
 
   context.register(provider);
+  context.register(
+    workspace.onDidChangeWorkspaceFolders(() => {
+      siblingComponentCache.clear();
+    })
+  );
+  context.register(
+    workspace.onDidCreateFiles(() => {
+      siblingComponentCache.clear();
+    })
+  );
+  context.register(
+    workspace.onDidDeleteFiles(() => {
+      siblingComponentCache.clear();
+    })
+  );
+  context.register(
+    workspace.onDidRenameFiles(() => {
+      siblingComponentCache.clear();
+    })
+  );
   context.logger.info('Collie completion provider registered.');
 }
 
