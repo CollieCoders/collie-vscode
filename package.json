@@ -171,6 +171,23 @@
           "group": "navigation@100"
         }
       ]
+    },
+    "configurationDefaults": {
+      "[collie]": {
+        "editor.semanticHighlighting.enabled": true,
+        "editor.semanticTokenColorCustomizations": {
+          "rules": {
+            "collieTag": "#569CD6",
+            "collieClassShorthand": "#4EC9B0",
+            "collieDirective": "#C586C0",
+            "colliePropsKeyword": "#D7BA7D",
+            "colliePropsField": "#9CDCFE",
+            "collieInterpolation": "#CE9178",
+            "colliePipeText": "#D4D4D4",
+            "collieComment": "#6A9955"
+          }
+        }
+      }
     }
   },
   "scripts": {
