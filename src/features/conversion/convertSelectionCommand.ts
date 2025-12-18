@@ -1,15 +1,13 @@
 import * as ts from 'typescript';
 import { basename, dirname, extname, join } from 'path';
 import { TextEncoder } from 'util';
-import { commands, env, Uri, window, workspace, type OutputChannel, type TextDocument } from 'vscode';
+import { env, Uri, window, workspace, type OutputChannel, type TextDocument } from 'vscode';
 import type { FeatureContext } from '..';
-import { registerFeature } from '..';
 import type { IrNode } from '../../convert/ir/nodes';
 import { printCollieDocument } from '../../convert/collie/print';
 import { convertJsxNodesToIr } from '../../convert/tsx/jsxToIr';
 import { JsxParseError, parseJsxSelection } from '../../convert/tsx/parseSelection';
 
-const COMMAND_ID = 'collie.convertTsxSelectionToCollie';
 const SUPPORTED_LANGUAGE_IDS = new Set(['typescriptreact', 'javascriptreact']);
 const OUTPUT_CHANNEL_NAME = 'Collie Conversion';
 
@@ -42,53 +40,55 @@ function getSelectionContext(): SelectionContext | undefined {
   };
 }
 
-function registerConversionCommand(context: FeatureContext) {
-  const outputChannel = window.createOutputChannel(OUTPUT_CHANNEL_NAME);
-  context.register(outputChannel);
+let outputChannel: OutputChannel | undefined;
 
-  const disposable = commands.registerCommand(COMMAND_ID, async () => {
-    const selection = getSelectionContext();
-    if (!selection) {
+function getConversionOutputChannel(context: FeatureContext): OutputChannel {
+  if (!outputChannel) {
+    outputChannel = window.createOutputChannel(OUTPUT_CHANNEL_NAME);
+    context.register(outputChannel);
+  }
+  return outputChannel;
+}
+
+export async function runConvertTsxSelectionToCollie(context: FeatureContext): Promise<void> {
+  const selection = getSelectionContext();
+  if (!selection) {
+    return;
+  }
+
+  const channel = getConversionOutputChannel(context);
+  context.logger.info('Collie conversion command invoked.');
+
+  try {
+    const parseResult = parseJsxSelection(selection.text);
+    const conversion = convertJsxNodesToIr(parseResult.rootNodes, parseResult.sourceFile);
+    const collieText = printCollieDocument(conversion.nodes);
+    logSelection(
+      selection.text,
+      parseResult.rootNodes,
+      parseResult.sourceFile,
+      conversion.nodes,
+      collieText,
+      conversion.diagnostics.warnings,
+      channel
+    );
+    await deliverCollieOutput(selection.document, collieText);
+    if (conversion.diagnostics.warnings.length > 0) {
+      window.showWarningMessage('JSX parsed with warnings. See the Collie Conversion output for details.');
+    } else {
+      window.showInformationMessage('Parsed JSX selection. See the Collie Conversion output for details.');
+    }
+  } catch (error) {
+    if (error instanceof JsxParseError) {
+      context.logger.warn('Failed to parse JSX selection.', error);
+      window.showErrorMessage(error.message);
       return;
     }
 
-    context.logger.info('Collie conversion command invoked.');
-
-    try {
-      const parseResult = parseJsxSelection(selection.text);
-      const conversion = convertJsxNodesToIr(parseResult.rootNodes, parseResult.sourceFile);
-      const collieText = printCollieDocument(conversion.nodes);
-      logSelection(
-        selection.text,
-        parseResult.rootNodes,
-        parseResult.sourceFile,
-        conversion.nodes,
-        collieText,
-        conversion.diagnostics.warnings,
-        outputChannel
-      );
-      await deliverCollieOutput(selection.document, collieText);
-      if (conversion.diagnostics.warnings.length > 0) {
-        window.showWarningMessage('JSX parsed with warnings. See the Collie Conversion output for details.');
-      } else {
-        window.showInformationMessage('Parsed JSX selection. See the Collie Conversion output for details.');
-      }
-    } catch (error) {
-      if (error instanceof JsxParseError) {
-        context.logger.warn('Failed to parse JSX selection.', error);
-        window.showErrorMessage(error.message);
-        return;
-      }
-
-      context.logger.error('Unexpected error while parsing JSX selection.', error);
-      window.showErrorMessage('Unexpected error while parsing the JSX selection.');
-    }
-  });
-
-  context.register(disposable);
+    context.logger.error('Unexpected error while parsing JSX selection.', error);
+    window.showErrorMessage('Unexpected error while parsing the JSX selection.');
+  }
 }
-
-registerFeature(registerConversionCommand);
 
 function logSelection(
   selectionText: string,
