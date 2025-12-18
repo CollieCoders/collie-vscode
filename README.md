@@ -78,6 +78,22 @@ Add the following to your workspace `.vscode/settings.json` to use the Collie fo
 
 _(Range formatting is not yet implemented; use document formatting for now.)_
 
+## Convert JSX/TSX to Collie (Priority 4A)
+
+Use the **Collie: Convert JSX/TSX Selection to Collie** command to bootstrap new `.collie` files from existing React components:
+
+1. Highlight the JSX/TSX you want to convert inside a `*.tsx` or `*.jsx` editor (multi-node selections are allowed).
+2. Run the command from the Command Palette. The extension parses the selection, logs the TypeScript AST + intermediate representation, and prints best-effort Collie output to the **Collie Conversion** output channel.
+3. Choose **Create File** to save a new `.collie` file next to the source component (you can rename or relocate it in the save dialog), or pick **Copy to Clipboard** to paste the text elsewhere. The clipboard path also opens an untitled preview so you can inspect the result immediately.
+
+The conversion intentionally favors progress over perfection:
+
+- Unsupported constructs are never dropped—expression placeholders such as `{{ /* Collie TODO: ... */ }}` are emitted instead, and matching warnings appear in the output channel so you know what to clean up manually.
+- The original TSX file is not modified; the command only reads the current selection.
+- Because the converter wraps fragments in a synthetic component during parsing, whitespace-only selections are rejected up front with a friendly message.
+
+This workflow lets you incrementally migrate components: select a render subtree, run the command, review the logged IR/collie output for accuracy, and then paste or save the generated `.collie` file when you are satisfied.
+
 ## Experimental Language Features (Priority 3)
 
 Priority 3 introduces best-effort editing ergonomics layered on top of the existing syntax/formatting support. These features are intentionally gated behind settings so you can opt in as they stabilize:
