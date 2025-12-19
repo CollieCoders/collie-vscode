@@ -12,10 +12,10 @@ export interface FeatureFlagSnapshot {
 }
 
 const DEFAULT_FLAGS: FeatureFlagSnapshot = {
-  diagnostics: false,
-  completions: false,
-  navigation: false,
-  hover: false
+  diagnostics: true,
+  completions: true,
+  navigation: true,
+  hover: true
 };
 
 let currentFlags: FeatureFlagSnapshot = readFeatureFlags();

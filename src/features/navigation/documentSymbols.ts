@@ -2,7 +2,7 @@ import { basename } from 'path';
 import { DocumentSymbol, languages, Range, SymbolKind, TextDocument } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
-import type { ElementNode, Node, ConditionalNode, ConditionalBranch, PropsDecl } from '../../format/parser/ast';
+import type { ElementNode, Node, ConditionalNode, ConditionalBranch, ForLoopNode, PropsDecl } from '../../format/parser/ast';
 import type { SourceSpan } from '../../format/parser/diagnostics';
 import { getParsedDocument } from '../../lang/cache';
 import { isFeatureFlagEnabled } from '../featureFlags';
@@ -88,12 +88,31 @@ function buildConditionalBranchSymbol(
   return symbol;
 }
 
+function buildForLoopSymbol(document: TextDocument, node: ForLoopNode): DocumentSymbol {
+  const label = `@for ${node.variable} in ${node.iterable}`;
+  const range = spanToRange(document, node.span);
+  const symbol = new DocumentSymbol(label, 'Loop block', SymbolKind.Namespace, range, range);
+  const children: DocumentSymbol[] = [];
+
+  for (const child of node.body) {
+    const childSymbol = buildNodeSymbol(document, child);
+    if (childSymbol) {
+      children.push(childSymbol);
+    }
+  }
+
+  symbol.children = children;
+  return symbol;
+}
+
 function buildNodeSymbol(document: TextDocument, node: Node): DocumentSymbol | null {
   switch (node.type) {
     case 'Element':
       return buildElementSymbol(document, node);
     case 'Conditional':
       return buildConditionalSymbol(document, node);
+    case 'ForLoop':
+      return buildForLoopSymbol(document, node);
     default:
       return null;
   }

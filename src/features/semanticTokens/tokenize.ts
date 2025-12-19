@@ -10,6 +10,7 @@ export interface CollieSemanticToken {
 interface TokenizerState {
   inBlockComment: boolean;
   propsIndent: number | null;
+  classesIndent: number | null;
 }
 
 interface Segment {
@@ -18,18 +19,24 @@ interface Segment {
 }
 
 const directivePattern = /@(if|elseIf|else)\b/g;
-const classShorthandPattern = /\.[A-Za-z_][\w-]*/g;
+const forLoopPattern = /@for\s+([A-Za-z_][\w]*)\s+in\s+([A-Za-z_][\w.[\]]*)/g;
+const classShorthandPattern = /\.(?:\$[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][\w-]*)/g;
+const singleBracePattern = /(?<!\{)\{(?!\{).*?(?<!\})\}(?!\})/g;
 const interpolationPattern = /\{\{.*?\}\}/g;
 const propsKeywordPattern = /^(\s*)(props)\b/;
 const propsFieldPattern = /^(\s*)([A-Za-z_][\w-]*)(\??)\s*:/;
 const tagPattern = /^(\s*)([A-Za-z][\w-]*)/;
 const pipeTextPattern = /^(\s*)\|/;
+const classesKeywordPattern = /^(\s*)(classes)\b/;
+const classAliasLinePattern = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*=/;
+const expressionLinePattern = /^(\s*)(=)\s+/;
 
 export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[] {
   const tokens: CollieSemanticToken[] = [];
   const state: TokenizerState = {
     inBlockComment: false,
-    propsIndent: null
+    propsIndent: null,
+    classesIndent: null
   };
 
   const lines = text.split(/\r?\n/);
@@ -55,6 +62,13 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
         // stay inside props block on blank lines
       } else if (indent <= state.propsIndent && !propsKeywordPattern.test(lineText)) {
         state.propsIndent = null;
+      }
+    }
+    if (state.classesIndent !== null) {
+      if (nonWhitespace.length === 0) {
+        // stay inside classes block on blank lines
+      } else if (indent <= state.classesIndent && !classesKeywordPattern.test(lineText)) {
+        state.classesIndent = null;
       }
     }
 
@@ -95,7 +109,24 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
       }
     }
 
+    const classesKeywordMatch = classesKeywordPattern.exec(lineText);
+    classesKeywordPattern.lastIndex = 0;
+    if (classesKeywordMatch) {
+      const start = classesKeywordMatch[1].length;
+      const keywordLength = classesKeywordMatch[2].length;
+      if (!overlaps(commentSegments, start, keywordLength)) {
+        pushToken(tokens, {
+          line,
+          startCharacter: start,
+          length: keywordLength,
+          type: 'collieClassesKeyword'
+        });
+        state.classesIndent = start;
+      }
+    }
+
     const inPropsBlock = state.propsIndent !== null && indent > state.propsIndent;
+    const inClassesBlock = state.classesIndent !== null && indent > state.classesIndent;
 
     if (inPropsBlock) {
       const propsFieldMatch = propsFieldPattern.exec(lineText);
@@ -111,6 +142,55 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
             type: 'colliePropsField'
           });
         }
+      }
+    }
+
+    if (inClassesBlock) {
+      const classAliasMatch = classAliasLinePattern.exec(lineText);
+      classAliasLinePattern.lastIndex = 0;
+      if (classAliasMatch) {
+        const start = classAliasMatch[1].length;
+        const alias = classAliasMatch[2];
+        if (!overlaps(commentSegments, start, alias.length)) {
+          pushToken(tokens, {
+            line,
+            startCharacter: start,
+            length: alias.length,
+            type: 'collieClassAliasName'
+          });
+        }
+      }
+    }
+
+    // Expression lines (= expression)
+    const expressionLineMatch = expressionLinePattern.exec(lineText);
+    expressionLinePattern.lastIndex = 0;
+    if (expressionLineMatch) {
+      const start = expressionLineMatch[1].length;
+      const equalsLength = expressionLineMatch[2].length;
+      if (!overlaps(commentSegments, start, equalsLength)) {
+        pushToken(tokens, {
+          line,
+          startCharacter: start,
+          length: equalsLength,
+          type: 'collieExpressionLine'
+        });
+      }
+    }
+
+    // @for loops
+    forLoopPattern.lastIndex = 0;
+    let forMatch: RegExpExecArray | null;
+    while ((forMatch = forLoopPattern.exec(lineText))) {
+      const start = forMatch.index;
+      const length = forMatch[0].length;
+      if (!overlaps(commentSegments, start, length)) {
+        pushToken(tokens, {
+          line,
+          startCharacter: start,
+          length,
+          type: 'collieForLoop'
+        });
       }
     }
 
@@ -139,14 +219,17 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
         const tagName = tagMatch[2];
         if (
           tagName !== 'props' &&
+          tagName !== 'classes' &&
           !lineText.slice(start, start + tagName.length).startsWith('@') &&
           !overlaps(commentSegments, start, tagName.length)
         ) {
+          // Distinguish between components (capitalized) and HTML tags (lowercase)
+          const tokenType = /^[A-Z]/.test(tagName) ? 'collieComponent' : 'collieTag';
           pushToken(tokens, {
             line,
             startCharacter: start,
             length: tagName.length,
-            type: 'collieTag'
+            type: tokenType
           });
         }
       }
@@ -159,11 +242,36 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
       const start = classMatch.index;
       const length = classMatch[0].length;
       if (!overlaps(commentSegments, start, length)) {
+        if (classMatch[0][1] === '$') {
+          pushToken(tokens, {
+            line,
+            startCharacter: start + 1,
+            length: length - 1,
+            type: 'collieClassAliasUsage'
+          });
+        } else {
+          pushToken(tokens, {
+            line,
+            startCharacter: start,
+            length,
+            type: 'collieClassShorthand'
+          });
+        }
+      }
+    }
+
+    // Single-brace interpolation {expr}
+    singleBracePattern.lastIndex = 0;
+    let singleBraceMatch: RegExpExecArray | null;
+    while ((singleBraceMatch = singleBracePattern.exec(lineText))) {
+      const start = singleBraceMatch.index;
+      const length = singleBraceMatch[0].length;
+      if (!overlaps(commentSegments, start, length)) {
         pushToken(tokens, {
           line,
           startCharacter: start,
           length,
-          type: 'collieClassShorthand'
+          type: 'collieSingleBraceInterpolation'
         });
       }
     }

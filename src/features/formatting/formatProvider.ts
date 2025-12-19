@@ -18,11 +18,20 @@ function readFormatterOptions(): FormatterOptions {
 async function provideFormattingEdits(
   document: TextDocument,
   _options: FormattingOptions,
-  _token: CancellationToken,
+  token: CancellationToken,
   ctx: FeatureContext
 ) {
   try {
+    if (token.isCancellationRequested) {
+      return [];
+    }
+
     const result = formatDocument(document, readFormatterOptions());
+
+    if (token.isCancellationRequested) {
+      return [];
+    }
+
     if (result.usedFallback) {
       ctx.logger.warn('Collie AST formatter failed; fallback formatter applied.', result.error);
     }

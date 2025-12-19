@@ -12,11 +12,12 @@ import {
 import { dirname, extname, basename } from 'path';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
-import type { Node } from '../../format/parser/ast';
+import type { ClassAliasesDecl, Node } from '../../format/parser/ast';
+import type { ParsedDocument } from '../../lang';
 import { getParsedDocument } from '../../lang/cache';
 import { isFeatureFlagEnabled } from '../featureFlags';
 
-const DIRECTIVE_LABELS = ['@if', '@elseIf', '@else'] as const;
+const DIRECTIVE_LABELS = ['@if', '@elseIf', '@else', '@for'] as const;
 const COMMON_TAGS = ['div', 'span', 'section', 'header', 'footer', 'main', 'nav', 'button', 'input', 'label', 'article'];
 const HTML_TAG_SET = new Set(COMMON_TAGS);
 const COMPONENT_EXTENSIONS = new Set(['.collie', '.tsx']);
@@ -43,7 +44,7 @@ function extractWordContext(document: TextDocument, position: Position): WordCon
   let start = position.character;
   while (start > 0) {
     const ch = line.charAt(start - 1);
-    if (!/[@A-Za-z0-9_-]/.test(ch)) {
+    if (!/[@A-Za-z0-9_\-$]/.test(ch)) {
       break;
     }
     start--;
@@ -132,12 +133,13 @@ async function readSiblingComponents(document: TextDocument): Promise<string[]> 
 async function buildComponentItems(
   document: TextDocument,
   range: Range,
-  context: FeatureContext
+  context: FeatureContext,
+  parsed: ParsedDocument | null
 ): Promise<CompletionItem[]> {
   try {
-    const parsed = getParsedDocument(document);
+    const source = parsed ?? getParsedDocument(document);
     const names = new Set<string>();
-    collectComponentNamesFromAst(parsed.ast.children, names);
+    collectComponentNamesFromAst(source.ast.children, names);
     const siblingNames = await readSiblingComponents(document);
     for (const name of siblingNames) {
       names.add(name);
@@ -175,8 +177,20 @@ async function provideCompletionItems(document: TextDocument, position: Position
     return createDirectiveItems(range);
   }
 
+  let parsed: ParsedDocument | null = null;
+  try {
+    parsed = getParsedDocument(document);
+  } catch (error) {
+    context.logger.error('Collie completion provider failed to parse document for completions.', error);
+  }
+
+  if (word.startsWith('$')) {
+    const aliasItems = createAliasCompletionItems(word, range, parsed?.ast.classAliases);
+    return aliasItems.length ? aliasItems : undefined;
+  }
+
   const items: CompletionItem[] = [...createTagItems(range)];
-  items.push(...(await buildComponentItems(document, range, context)));
+  items.push(...(await buildComponentItems(document, range, context, parsed)));
   return items;
 }
 
@@ -189,7 +203,8 @@ function activateCompletionFeature(context: FeatureContext) {
       }
     },
     '@',
-    '.'
+    '.',
+    '$'
   );
 
   context.register(provider);
@@ -217,3 +232,25 @@ function activateCompletionFeature(context: FeatureContext) {
 }
 
 registerFeature(activateCompletionFeature);
+
+function createAliasCompletionItems(
+  word: string,
+  range: Range,
+  classAliases?: ClassAliasesDecl
+): CompletionItem[] {
+  if (!classAliases) {
+    return [];
+  }
+
+  const query = word.slice(1);
+  return classAliases.aliases
+    .filter(alias => alias.name.startsWith(query))
+    .map(alias => {
+      const item = new CompletionItem(`$${alias.name}`, CompletionItemKind.Variable);
+      item.range = range;
+      item.insertText = `$${alias.name}`;
+      item.detail = alias.classes.join(' ');
+      item.sortText = `0_${alias.name}`;
+      return item;
+    });
+}

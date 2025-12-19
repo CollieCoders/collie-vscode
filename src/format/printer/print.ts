@@ -1,7 +1,9 @@
 import type {
+  ClassAliasesDecl,
   ConditionalNode,
   ElementNode,
   ExpressionNode,
+  ForLoopNode,
   Node,
   PropsDecl,
   RootNode,
@@ -45,6 +47,16 @@ export function print(root: RootNode, options: PrintOptions = {}): string {
 
   if (root.props) {
     lines.push(...printProps(root.props, ctx));
+    if (root.classAliases || root.children.length) {
+      lines.push('');
+    }
+  }
+
+  if (root.classAliases) {
+    lines.push(...printClassAliases(root.classAliases, ctx));
+    if (root.children.length) {
+      lines.push('');
+    }
   }
 
   for (const child of root.children) {
@@ -65,6 +77,16 @@ function printProps(props: PropsDecl, ctx: PrinterContext): string[] {
   return lines;
 }
 
+function printClassAliases(aliases: ClassAliasesDecl, ctx: PrinterContext): string[] {
+  const lines = ['classes'];
+  for (const alias of aliases.aliases) {
+    const indent = createIndent(ctx, 1);
+    const rhs = alias.classes.join('.');
+    lines.push(`${indent}${alias.name} = ${rhs}`);
+  }
+  return lines;
+}
+
 function printNode(node: Node, level: number, ctx: PrinterContext, out: string[]) {
   switch (node.type) {
     case 'Element':
@@ -78,6 +100,9 @@ function printNode(node: Node, level: number, ctx: PrinterContext, out: string[]
       break;
     case 'Conditional':
       printConditional(node, level, ctx, out);
+      break;
+    case 'ForLoop':
+      printForLoop(node, level, ctx, out);
       break;
     default: {
       const exhaustive: never = node;
@@ -138,7 +163,8 @@ function printText(node: TextNode, level: number, ctx: PrinterContext, out: stri
 
 function printExpression(node: ExpressionNode, level: number, ctx: PrinterContext, out: string[]) {
   const indent = createIndent(ctx, level);
-  out.push(`${indent}{{ ${node.value} }}`);
+  // Prefer the new = expression syntax
+  out.push(`${indent}= ${node.value}`);
 }
 
 function printConditional(node: ConditionalNode, level: number, ctx: PrinterContext, out: string[]) {
@@ -163,6 +189,15 @@ function printConditional(node: ConditionalNode, level: number, ctx: PrinterCont
       printNode(child, level + 1, ctx, out);
     }
   });
+}
+
+function printForLoop(node: ForLoopNode, level: number, ctx: PrinterContext, out: string[]) {
+  const indent = createIndent(ctx, level);
+  const line = `${indent}@for ${node.variable} in ${node.iterable}`;
+  out.push(line);
+  for (const child of node.body) {
+    printNode(child, level + 1, ctx, out);
+  }
 }
 
 function formatInlineBranchBody(nodes: Node[], ctx: PrinterContext): string | null {

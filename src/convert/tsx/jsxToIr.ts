@@ -260,45 +260,9 @@ function summarizeNodeText(node: ts.Node, sourceFile: ts.SourceFile) {
   const max = 80;
   return raw.length > max ? `${raw.slice(0, max - 1)}…` : raw;
 }
-*** End Patch
-    if (
-      ts.isJsxElement(child) ||
-      ts.isJsxSelfClosingElement(child) ||
-      ts.isJsxFragment(child) ||
-      ts.isJsxExpression(child)
-    ) {
-      found = true;
-      return;
-    }
-    child.forEachChild(visit);
-  };
 
-  node.forEachChild(visit);
-  return found;
-}
-
-const PLACEHOLDER_PREFIX = '/* Collie TODO: ';
-const PLACEHOLDER_SUFFIX = ' */';
-
-function buildPlaceholderText(reason: string, node: ts.Node, sourceFile: ts.SourceFile) {
-  const preview = summarizeNodeText(node, sourceFile);
-  return `${PLACEHOLDER_PREFIX}${reason}${preview ? ` — ${preview}` : ''}${PLACEHOLDER_SUFFIX}`;
-}
-
-function createPlaceholderExpression(reason: string, node: ts.Node, sourceFile: ts.SourceFile) {
-  return createIrExpression(buildPlaceholderText(reason, node, sourceFile));
-}
-
-function summarizeNodeText(node: ts.Node, sourceFile: ts.SourceFile) {
-  const raw = node.getText(sourceFile).replace(/\s+/g, ' ').trim();
-  if (!raw) {
-    return '';
-  }
-
-  const max = 80;
-  return raw.length > max ? `${raw.slice(0, max - 1)}…` : raw;
-}
-
+// Class aliases are authored directly in Collie templates.
+// JSX/TSX to Collie conversion does not attempt to infer `classes` blocks.
 function normalizeProps(props: readonly (IrProp | IrExpression)[]) {
   const normalizedProps: (IrProp | IrExpression)[] = [];
   const classes: string[] = [];

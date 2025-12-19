@@ -1,13 +1,26 @@
 import type { SourceSpan } from './diagnostics';
 
+export interface ClassAliasDecl {
+  name: string;
+  classes: string[];
+  span?: SourceSpan;
+  nameSpan?: SourceSpan;
+}
+
+export interface ClassAliasesDecl {
+  aliases: ClassAliasDecl[];
+  span?: SourceSpan;
+}
+
 export interface RootNode {
   type: 'Root';
   children: Node[];
   props?: PropsDecl;
+  classAliases?: ClassAliasesDecl;
   span?: SourceSpan;
 }
 
-export type Node = ElementNode | TextNode | ExpressionNode | ConditionalNode;
+export type Node = ElementNode | TextNode | ExpressionNode | ConditionalNode | ForLoopNode;
 
 export interface ElementNode {
   type: 'Element';
@@ -16,6 +29,7 @@ export interface ElementNode {
   children: Node[];
   span?: SourceSpan;
   nameSpan?: SourceSpan;
+  classSpans?: SourceSpan[];
 }
 
 export interface TextNode {
@@ -53,6 +67,14 @@ export interface ConditionalBranch {
 export interface ConditionalNode {
   type: 'Conditional';
   branches: ConditionalBranch[];
+  span?: SourceSpan;
+}
+
+export interface ForLoopNode {
+  type: 'ForLoop';
+  variable: string;
+  iterable: string;
+  body: Node[];
   span?: SourceSpan;
 }
 
