@@ -804,7 +804,9 @@ function parseElement(
 ): ElementNode | null {
   const span = createSpan(lineNumber, column, Math.max(line.length, 1), lineOffset);
   // Split selector-style syntax first (div.welcome.big)
-  const selectorMatch = line.match(/^([A-Za-z][A-Za-z0-9_$]*)(\.[A-Za-z0-9_-]+)*/);
+  const selectorMatch = line.match(
+    /^([A-Za-z][A-Za-z0-9_$]*)(\.(?:[A-Za-z0-9_-]+|\$[A-Za-z_][A-Za-z0-9_]*))*/
+  );
   if (!selectorMatch) {
     pushDiag(
       diagnostics,
