@@ -184,7 +184,10 @@
             "colliePropsField": "#9CDCFE",
             "collieInterpolation": "#CE9178",
             "colliePipeText": "#D4D4D4",
-            "collieComment": "#6A9955"
+            "collieComment": "#6A9955",
+            "collieClassesKeyword": "#D7BA7D",
+            "collieClassAliasName": "#4FC1FF",
+            "collieClassAliasUsage": "#4EC9B0"
           }
         }
       }

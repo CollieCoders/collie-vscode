@@ -1,4 +1,6 @@
 import type {
+  ClassAliasDecl,
+  ClassAliasesDecl,
   ConditionalBranch,
   ConditionalNode,
   ElementNode,
@@ -41,13 +43,14 @@ interface ConditionalChainState {
 }
 
 const ELEMENT_NAME = /^[A-Za-z][A-Za-z0-9_-]*/;
-const CLASS_NAME = /^[A-Za-z0-9_-]+/;
+const CLASS_TOKEN = /^(?:[A-Za-z0-9_-]+|\$[A-Za-z_][A-Za-z0-9_]*)/;
 
 export function parse(source: string): ParseResult {
   const diagnostics: Diagnostic[] = [];
   const root: RootNode = { type: 'Root', children: [] };
   const stack: StackItem[] = [{ node: root, level: -1 }];
   let propsBlockLevel: number | null = null;
+  let classesBlockLevel: number | null = null;
   const conditionalChains = new Map<number, ConditionalChainState>();
   const branchLocations: BranchLocation[] = [];
 
@@ -101,6 +104,9 @@ export function parse(source: string): ParseResult {
 
     if (propsBlockLevel !== null && level <= propsBlockLevel) {
       propsBlockLevel = null;
+    }
+    if (classesBlockLevel !== null && level <= classesBlockLevel) {
+      classesBlockLevel = null;
     }
 
     const top = stack[stack.length - 1];
@@ -158,6 +164,45 @@ export function parse(source: string): ParseResult {
       continue;
     }
 
+    if (trimmed === 'classes') {
+      if (level !== 0) {
+        pushDiag(
+          diagnostics,
+          'COLLIE301',
+          'Classes block must be at the top level.',
+          lineNumber,
+          indent + 1,
+          lineOffset,
+          trimmed.length
+        );
+      } else if (root.children.length > 0) {
+        pushDiag(
+          diagnostics,
+          'COLLIE302',
+          'Classes block must appear before any template nodes.',
+          lineNumber,
+          indent + 1,
+          lineOffset,
+          trimmed.length
+        );
+      } else {
+        const headerSpan = createSpan(lineNumber, indent + 1, Math.max(trimmed.length, 1), lineOffset);
+        if (!root.classAliases) {
+          root.classAliases = {
+            aliases: [],
+            span: headerSpan
+          };
+        } else if (root.classAliases.span) {
+          root.classAliases.span = {
+            ...root.classAliases.span,
+            end: headerSpan.end
+          };
+        }
+        classesBlockLevel = level;
+      }
+      continue;
+    }
+
     if (propsBlockLevel !== null && level > propsBlockLevel) {
       if (level !== propsBlockLevel + 1) {
         pushDiag(
@@ -174,6 +219,33 @@ export function parse(source: string): ParseResult {
       const field = parsePropsField(trimmed, lineNumber, indent + 1, lineOffset, diagnostics);
       if (field && root.props) {
         root.props.fields.push(field);
+      }
+      continue;
+    }
+
+    if (classesBlockLevel !== null && level > classesBlockLevel) {
+      if (level !== classesBlockLevel + 1) {
+        pushDiag(
+          diagnostics,
+          'COLLIE303',
+          'Classes lines must be indented two spaces under the classes header.',
+          lineNumber,
+          indent + 1,
+          lineOffset
+        );
+        continue;
+      }
+
+      const alias = parseClassAliasLine(
+        trimmed,
+        lineNumber,
+        indent + 1,
+        lineOffset,
+        diagnostics
+      );
+      if (alias) {
+        root.classAliases ??= { aliases: [] };
+        root.classAliases.aliases.push(alias);
       }
       continue;
     }
@@ -373,6 +445,11 @@ export function parse(source: string): ParseResult {
       );
     }
   }
+
+  if (root.classAliases) {
+    validateClassAliasDefinitions(root.classAliases, diagnostics);
+  }
+  validateClassAliasUsages(root, diagnostics);
 
   return { root, diagnostics };
 }
@@ -742,10 +819,28 @@ function parseElement(
   }
 
   const raw = selectorMatch[0];
-  const parts = raw.split('.');
-  const name = parts[0];
-  const classes = parts.slice(1);
+  const name = selectorMatch[1];
   const nameSpan = createSpan(lineNumber, column, Math.max(name.length, 1), lineOffset);
+  const classes: string[] = [];
+  const classSpans: SourceSpan[] = [];
+
+  let inlineSelectorRemainder = raw.slice(name.length);
+  let selectorConsumed = name.length;
+  while (inlineSelectorRemainder.startsWith('.')) {
+    inlineSelectorRemainder = inlineSelectorRemainder.slice(1);
+    selectorConsumed += 1;
+    const classMatch = inlineSelectorRemainder.match(CLASS_TOKEN);
+    if (!classMatch) {
+      break;
+    }
+    const className = classMatch[0];
+    classes.push(className);
+    classSpans.push(
+      createSpan(lineNumber, column + selectorConsumed, Math.max(className.length, 1), lineOffset)
+    );
+    inlineSelectorRemainder = inlineSelectorRemainder.slice(className.length);
+    selectorConsumed += className.length;
+  }
 
   let rest = line.slice(raw.length);
   let inlineText: TextNode | null = null;
@@ -779,12 +874,12 @@ function parseElement(
       rest = rest.slice(1);
       consumed++;
 
-      const classMatch = rest.match(/^[A-Za-z0-9_-]+/);
+      const classMatch = rest.match(CLASS_TOKEN);
       if (!classMatch) {
         pushDiag(
           diagnostics,
           'COLLIE004',
-          'Class names must contain only letters, numbers, underscores, or hyphens.',
+          'Class names must contain only letters, numbers, underscores, or hyphens, or start with $ for aliases.',
           lineNumber,
           column + consumed,
           lineOffset
@@ -793,6 +888,14 @@ function parseElement(
       }
 
       classes.push(classMatch[0]);
+      classSpans.push(
+        createSpan(
+          lineNumber,
+          column + consumed,
+          Math.max(classMatch[0].length, 1),
+          lineOffset
+        )
+      );
       rest = rest.slice(classMatch[0].length);
       consumed += classMatch[0].length;
       continue;
@@ -810,7 +913,7 @@ function parseElement(
     return null;
   }
 
-  return {
+  const element: ElementNode = {
     type: 'Element',
     name,
     classes,
@@ -818,6 +921,12 @@ function parseElement(
     span,
     nameSpan
   };
+
+  if (classes.length) {
+    element.classSpans = classSpans;
+  }
+
+  return element;
 }
 
 function pushDiag(
@@ -835,4 +944,140 @@ function pushDiag(
     message,
     span: createSpan(line, column, Math.max(length, 1), lineOffset)
   });
+}
+
+function parseClassAliasLine(
+  line: string,
+  lineNumber: number,
+  column: number,
+  lineOffset: number,
+  diagnostics: Diagnostic[]
+): ClassAliasDecl | null {
+  const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$/);
+  if (!match) {
+    pushDiag(
+      diagnostics,
+      'COLLIE304',
+      'Classes lines must be in the form `name = class.tokens`.',
+      lineNumber,
+      column,
+      lineOffset,
+      Math.max(line.length, 1)
+    );
+    return null;
+  }
+
+  const [, name, rhsRaw] = match;
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    pushDiag(
+      diagnostics,
+      'COLLIE305',
+      `Class alias name '${name}' must be a valid identifier.`,
+      lineNumber,
+      column,
+      lineOffset,
+      name.length
+    );
+    return null;
+  }
+
+  const rhs = rhsRaw.trim();
+  if (!rhs) {
+    pushDiag(
+      diagnostics,
+      'COLLIE304',
+      'Classes lines must provide one or more class tokens after `=`.',
+      lineNumber,
+      column + line.indexOf('=') + 1,
+      lineOffset,
+      rhsRaw.length || 1
+    );
+    return null;
+  }
+
+  const rhsNoLeadingDot = rhs.startsWith('.') ? rhs.slice(1) : rhs;
+  const classes = rhsNoLeadingDot
+    .split('.')
+    .map(token => token.trim())
+    .filter(Boolean);
+
+  if (!classes.length) {
+    pushDiag(
+      diagnostics,
+      'COLLIE304',
+      'Classes lines must provide one or more class tokens after `=`.',
+      lineNumber,
+      column + line.indexOf('=') + 1,
+      lineOffset,
+      rhsRaw.length || 1
+    );
+    return null;
+  }
+
+  const span = createSpan(lineNumber, column, Math.max(line.length, 1), lineOffset);
+  const nameSpan = createSpan(lineNumber, column, name.length, lineOffset);
+  return { name, classes, span, nameSpan };
+}
+
+function validateClassAliasDefinitions(decl: ClassAliasesDecl, diagnostics: Diagnostic[]): void {
+  const seen = new Map<string, ClassAliasDecl>();
+  for (const alias of decl.aliases) {
+    const existing = seen.get(alias.name);
+    if (existing) {
+      const span = alias.nameSpan ?? alias.span;
+      diagnostics.push({
+        severity: 'error',
+        code: 'COLLIE306',
+        message: `Duplicate class alias '${alias.name}'.`,
+        span
+      });
+      continue;
+    }
+    seen.set(alias.name, alias);
+  }
+}
+
+function validateClassAliasUsages(root: RootNode, diagnostics: Diagnostic[]): void {
+  const defined = new Set<string>(root.classAliases?.aliases.map(alias => alias.name) ?? []);
+  for (const child of root.children) {
+    validateNodeClassAliases(child, defined, diagnostics);
+  }
+}
+
+function validateNodeClassAliases(
+  node: Node,
+  defined: Set<string>,
+  diagnostics: Diagnostic[]
+): void {
+  if (node.type === 'Element') {
+    const { classes, classSpans } = node;
+    for (let index = 0; index < classes.length; index++) {
+      const token = classes[index];
+      const match = token.match(/^\$([A-Za-z_][A-Za-z0-9_]*)$/);
+      if (!match) {
+        continue;
+      }
+      const aliasName = match[1];
+      if (!defined.has(aliasName)) {
+        diagnostics.push({
+          severity: 'error',
+          code: 'COLLIE307',
+          message: `Undefined class alias '${aliasName}'.`,
+          span: classSpans?.[index] ?? node.span
+        });
+      }
+    }
+    for (const child of node.children) {
+      validateNodeClassAliases(child, defined, diagnostics);
+    }
+    return;
+  }
+
+  if (node.type === 'Conditional') {
+    for (const branch of node.branches) {
+      for (const child of branch.body) {
+        validateNodeClassAliases(child, defined, diagnostics);
+      }
+    }
+  }
 }

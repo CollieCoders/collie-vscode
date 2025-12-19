@@ -299,6 +299,8 @@ function summarizeNodeText(node: ts.Node, sourceFile: ts.SourceFile) {
   return raw.length > max ? `${raw.slice(0, max - 1)}…` : raw;
 }
 
+// Class aliases are authored directly in Collie templates.
+// JSX/TSX to Collie conversion does not attempt to infer `classes` blocks.
 function normalizeProps(props: readonly (IrProp | IrExpression)[]) {
   const normalizedProps: (IrProp | IrExpression)[] = [];
   const classes: string[] = [];

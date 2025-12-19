@@ -1,9 +1,22 @@
 import type { SourceSpan } from './diagnostics';
 
+export interface ClassAliasDecl {
+  name: string;
+  classes: string[];
+  span?: SourceSpan;
+  nameSpan?: SourceSpan;
+}
+
+export interface ClassAliasesDecl {
+  aliases: ClassAliasDecl[];
+  span?: SourceSpan;
+}
+
 export interface RootNode {
   type: 'Root';
   children: Node[];
   props?: PropsDecl;
+  classAliases?: ClassAliasesDecl;
   span?: SourceSpan;
 }
 
@@ -16,6 +29,7 @@ export interface ElementNode {
   children: Node[];
   span?: SourceSpan;
   nameSpan?: SourceSpan;
+  classSpans?: SourceSpan[];
 }
 
 export interface TextNode {

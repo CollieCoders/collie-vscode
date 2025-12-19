@@ -2,7 +2,15 @@ import { Hover, MarkdownString, languages, TextDocument } from 'vscode';
 import type { Position } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
-import type { ConditionalNode, Node, PropsDecl, PropsField, TextNode } from '../../format/parser/ast';
+import type {
+  ClassAliasDecl,
+  ConditionalNode,
+  Node,
+  PropsDecl,
+  PropsField,
+  RootNode,
+  TextNode
+} from '../../format/parser/ast';
 import type { SourceSpan } from '../../format/parser/diagnostics';
 import { getParsedDocument } from '../../lang/cache';
 import { isFeatureFlagEnabled } from '../featureFlags';
@@ -172,6 +180,11 @@ function provideHover(document: TextDocument, position: Position, context: Featu
       return propsHover;
     }
 
+    const aliasHover = getClassAliasHover(offset, parsed.ast);
+    if (aliasHover) {
+      return aliasHover;
+    }
+
     if (hasExpressionHover(offset, parsed.ast.children)) {
       return createExpressionHover();
     }
@@ -194,3 +207,94 @@ function activateHoverFeature(context: FeatureContext) {
 }
 
 registerFeature(activateHoverFeature);
+
+function getClassAliasHover(offset: number, root: RootNode): Hover | undefined {
+  const decl = root.classAliases;
+  if (!decl) {
+    return undefined;
+  }
+
+  for (const alias of decl.aliases) {
+    if (spanContains(alias.nameSpan ?? alias.span, offset)) {
+      return createAliasHover(alias);
+    }
+  }
+
+  if (!decl.aliases.length) {
+    return undefined;
+  }
+
+  const aliasMap = new Map<string, ClassAliasDecl>();
+  for (const alias of decl.aliases) {
+    aliasMap.set(alias.name, alias);
+  }
+
+  for (const child of root.children) {
+    const hover = findAliasUsageHover(offset, child, aliasMap);
+    if (hover) {
+      return hover;
+    }
+  }
+
+  return undefined;
+}
+
+function findAliasUsageHover(
+  offset: number,
+  node: Node,
+  aliasMap: Map<string, ClassAliasDecl>
+): Hover | undefined {
+  if (node.type === 'Element') {
+    const spans = node.classSpans ?? [];
+    for (let index = 0; index < spans.length; index++) {
+      if (!spanContains(spans[index], offset)) {
+        continue;
+      }
+      const aliasName = extractAliasName(node.classes[index]);
+      if (!aliasName) {
+        continue;
+      }
+      const alias = aliasMap.get(aliasName);
+      if (alias) {
+        return createAliasHover(alias);
+      }
+      return undefined;
+    }
+    for (const child of node.children) {
+      const hover = findAliasUsageHover(offset, child, aliasMap);
+      if (hover) {
+        return hover;
+      }
+    }
+    return undefined;
+  }
+
+  if (node.type === 'Conditional') {
+    for (const branch of node.branches) {
+      for (const child of branch.body) {
+        const hover = findAliasUsageHover(offset, child, aliasMap);
+        if (hover) {
+          return hover;
+        }
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function extractAliasName(token: string): string | null {
+  const match = token.match(/^\$([A-Za-z_][A-Za-z0-9_]*)$/);
+  return match ? match[1] : null;
+}
+
+function createAliasHover(alias: ClassAliasDecl): Hover {
+  const md = new MarkdownString(undefined, true);
+  md.appendCodeblock(`$${alias.name}`, 'collie');
+  if (alias.classes.length) {
+    md.appendMarkdown('\nExpands to:\n\n');
+    md.appendCodeblock(alias.classes.join(' '), 'css');
+  }
+  md.isTrusted = true;
+  return new Hover(md);
+}
