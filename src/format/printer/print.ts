@@ -3,6 +3,7 @@ import type {
   ConditionalNode,
   ElementNode,
   ExpressionNode,
+  ForLoopNode,
   Node,
   PropsDecl,
   RootNode,
@@ -100,6 +101,9 @@ function printNode(node: Node, level: number, ctx: PrinterContext, out: string[]
     case 'Conditional':
       printConditional(node, level, ctx, out);
       break;
+    case 'ForLoop':
+      printForLoop(node, level, ctx, out);
+      break;
     default: {
       const exhaustive: never = node;
       throw new Error(`Unsupported node type ${(exhaustive as Node).type}`);
@@ -159,7 +163,8 @@ function printText(node: TextNode, level: number, ctx: PrinterContext, out: stri
 
 function printExpression(node: ExpressionNode, level: number, ctx: PrinterContext, out: string[]) {
   const indent = createIndent(ctx, level);
-  out.push(`${indent}{{ ${node.value} }}`);
+  // Prefer the new = expression syntax
+  out.push(`${indent}= ${node.value}`);
 }
 
 function printConditional(node: ConditionalNode, level: number, ctx: PrinterContext, out: string[]) {
@@ -184,6 +189,15 @@ function printConditional(node: ConditionalNode, level: number, ctx: PrinterCont
       printNode(child, level + 1, ctx, out);
     }
   });
+}
+
+function printForLoop(node: ForLoopNode, level: number, ctx: PrinterContext, out: string[]) {
+  const indent = createIndent(ctx, level);
+  const line = `${indent}@for ${node.variable} in ${node.iterable}`;
+  out.push(line);
+  for (const child of node.body) {
+    printNode(child, level + 1, ctx, out);
+  }
 }
 
 function formatInlineBranchBody(nodes: Node[], ctx: PrinterContext): string | null {
