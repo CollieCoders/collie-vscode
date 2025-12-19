@@ -465,14 +465,3 @@ Issues, ideas, and bug reports are very welcome.
   TODO: Add link to the main Collie language docs / discussion forum / Discord here.
 
 If you’re using Collie in a real project, feedback on what worked well and what didn’t will heavily influence how this extension evolves.
-
-```
-
----
-
-If you want, next step we can:
-
-- Tune the marketing blurb at the top for how “experimental” you want to position Collie.
-- Rename / relocate the image placeholders to match whatever folder structure you actually want under `assets/`.
-- Add a tiny “Sample Collie vs JSX side-by-side” section for devs seeing Collie for the first time in the marketplace.
-```
