@@ -1,12 +1,9 @@
-import { commands, env, window, workspace, type OutputChannel, type TextDocument } from 'vscode';
+import { env, window, workspace, type OutputChannel, type TextDocument } from 'vscode';
 import type { FeatureContext } from '..';
-import { registerFeature } from '..';
 import type { CollieExportResult, CollieExportTarget } from '../../convert/export/collieExport';
 import { exportCollieDocument } from '../../convert/export/collieExport';
 
 const COLLIE_LANGUAGE_ID = 'collie';
-const COPY_AS_JSX_COMMAND = 'collie.copyAsJsx';
-const COPY_AS_TSX_COMMAND = 'collie.copyAsTsx';
 const OUTPUT_CHANNEL_NAME = 'Collie Export';
 
 function requireActiveCollieDocument(): TextDocument | undefined {
@@ -88,21 +85,22 @@ async function deliverExportSnippet(result: Extract<CollieExportResult, { kind: 
   window.showInformationMessage(`Copied Collie ${result.target} snippet to clipboard and opened a preview.`);
 }
 
-function registerCollieExportCommands(context: FeatureContext) {
-  const outputChannel = window.createOutputChannel(OUTPUT_CHANNEL_NAME);
-  context.register(outputChannel);
+let outputChannel: OutputChannel | undefined;
 
-  context.register(
-    commands.registerCommand(COPY_AS_JSX_COMMAND, () => {
-      return runCopyCommand(context, 'JSX', outputChannel);
-    })
-  );
-
-  context.register(
-    commands.registerCommand(COPY_AS_TSX_COMMAND, () => {
-      return runCopyCommand(context, 'TSX', outputChannel);
-    })
-  );
+function getExportOutputChannel(context: FeatureContext): OutputChannel {
+  if (!outputChannel) {
+    outputChannel = window.createOutputChannel(OUTPUT_CHANNEL_NAME);
+    context.register(outputChannel);
+  }
+  return outputChannel;
 }
 
-registerFeature(registerCollieExportCommands);
+export async function runCopyCollieAsJsx(context: FeatureContext): Promise<void> {
+  const channel = getExportOutputChannel(context);
+  await runCopyCommand(context, 'JSX', channel);
+}
+
+export async function runCopyCollieAsTsx(context: FeatureContext): Promise<void> {
+  const channel = getExportOutputChannel(context);
+  await runCopyCommand(context, 'TSX', channel);
+}

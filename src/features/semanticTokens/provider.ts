@@ -1,4 +1,4 @@
-import type { SemanticTokens, TextDocument } from 'vscode';
+import type { SemanticTokens, TextDocument, CancellationToken } from 'vscode';
 import { languages, SemanticTokensBuilder, workspace } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
@@ -28,6 +28,10 @@ function buildSemanticTokens(tokens: CollieSemanticToken[]): SemanticTokens {
     builder.push(token.line, token.startCharacter, token.length, token.type, []);
   }
   return builder.build();
+}
+
+function emptySemanticTokens(): SemanticTokens {
+  return new SemanticTokensBuilder(collieSemanticTokensLegend).build();
 }
 
 function getOrCreateCacheEntry(document: TextDocument): TokenCacheEntry {
@@ -69,9 +73,12 @@ async function registerCollieSemanticTokens(context: FeatureContext) {
   const provider = languages.registerDocumentSemanticTokensProvider(
     { language: 'collie' },
     {
-      async provideDocumentSemanticTokens(document) {
+      async provideDocumentSemanticTokens(document: TextDocument, token: CancellationToken) {
         if (!isSemanticTokensEnabled()) {
-          return new SemanticTokensBuilder(collieSemanticTokensLegend).build();
+          return emptySemanticTokens();
+        }
+        if (token.isCancellationRequested) {
+          return emptySemanticTokens();
         }
         return getSemanticTokens(document);
       }
@@ -82,9 +89,12 @@ async function registerCollieSemanticTokens(context: FeatureContext) {
   const rangeProvider = languages.registerDocumentRangeSemanticTokensProvider(
     { language: 'collie' },
     {
-      async provideDocumentRangeSemanticTokens(document, range) {
+      async provideDocumentRangeSemanticTokens(document: TextDocument, range, token: CancellationToken) {
         if (!isSemanticTokensEnabled()) {
-          return new SemanticTokensBuilder(collieSemanticTokensLegend).build();
+          return emptySemanticTokens();
+        }
+        if (token.isCancellationRequested) {
+          return emptySemanticTokens();
         }
         const entry = getOrCreateCacheEntry(document);
         return buildRangeTokens(entry.tokens, range.start.line, range.end.line);

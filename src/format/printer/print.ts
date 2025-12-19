@@ -1,4 +1,5 @@
 import type {
+  ClassAliasesDecl,
   ConditionalNode,
   ElementNode,
   ExpressionNode,
@@ -45,6 +46,16 @@ export function print(root: RootNode, options: PrintOptions = {}): string {
 
   if (root.props) {
     lines.push(...printProps(root.props, ctx));
+    if (root.classAliases || root.children.length) {
+      lines.push('');
+    }
+  }
+
+  if (root.classAliases) {
+    lines.push(...printClassAliases(root.classAliases, ctx));
+    if (root.children.length) {
+      lines.push('');
+    }
   }
 
   for (const child of root.children) {
@@ -61,6 +72,16 @@ function printProps(props: PropsDecl, ctx: PrinterContext): string[] {
     const optionalFlag = field.optional ? '?' : '';
     const separator = ctx.options.normalizePropsSpacing ? ': ' : ':';
     lines.push(`${indent}${field.name}${optionalFlag}${separator}${field.typeText}`);
+  }
+  return lines;
+}
+
+function printClassAliases(aliases: ClassAliasesDecl, ctx: PrinterContext): string[] {
+  const lines = ['classes'];
+  for (const alias of aliases.aliases) {
+    const indent = createIndent(ctx, 1);
+    const rhs = alias.classes.join('.');
+    lines.push(`${indent}${alias.name} = ${rhs}`);
   }
   return lines;
 }

@@ -97,7 +97,7 @@ function collectDuplicatePropDiagnostics(document: TextDocument): VSDiagnostic[]
     const range = new Range(lineNumber, startColumn, lineNumber, startColumn + name.length);
 
     if (seen.has(name)) {
-      diagnostics.push(createDiagnostic(range, `Prop "${name}" is declared multiple times.`, 'COLLIE301'));
+      diagnostics.push(createDiagnostic(range, `Prop "${name}" is declared multiple times.`, 'COLLIE401'));
     } else {
       seen.set(name, range);
     }
@@ -128,7 +128,7 @@ function collectUnknownDirectiveDiagnostics(document: TextDocument): VSDiagnosti
 
     const startColumn = line.firstNonWhitespaceCharacterIndex;
     const range = new Range(lineNumber, startColumn, lineNumber, startColumn + match[0].length);
-    diagnostics.push(createDiagnostic(range, `Unknown directive "${directive}".`, 'COLLIE302'));
+    diagnostics.push(createDiagnostic(range, `Unknown directive "${directive}".`, 'COLLIE402'));
   }
 
   return diagnostics;

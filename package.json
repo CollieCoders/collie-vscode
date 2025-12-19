@@ -2,7 +2,7 @@
   "name": "collie-vscode",
   "displayName": "Collie",
   "description": "VS Code language support for Collie templates",
-  "version": "0.0.1",
+  "version": "0.1.1",
   "publisher": "collie",
   "license": "MIT",
   "repository": "https://github.com/collie-lang/collie-vscode",
@@ -63,22 +63,22 @@
         },
         "collie.features.diagnostics": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Enable experimental Collie diagnostics (Problems panel integration)."
         },
         "collie.features.completions": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Enable experimental Collie completions (directives, tags, components)."
         },
         "collie.features.navigation": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Enable experimental Collie navigation features (Go to Definition, symbols)."
         },
         "collie.features.hover": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Enable experimental Collie hover info (directives, props, expressions)."
         },
         "collie.format.indentSize": {
@@ -171,6 +171,26 @@
           "group": "navigation@100"
         }
       ]
+    },
+    "configurationDefaults": {
+      "[collie]": {
+        "editor.semanticHighlighting.enabled": true,
+        "editor.semanticTokenColorCustomizations": {
+          "rules": {
+            "collieTag": "#569CD6",
+            "collieClassShorthand": "#4EC9B0",
+            "collieDirective": "#C586C0",
+            "colliePropsKeyword": "#D7BA7D",
+            "colliePropsField": "#9CDCFE",
+            "collieInterpolation": "#CE9178",
+            "colliePipeText": "#D4D4D4",
+            "collieComment": "#6A9955",
+            "collieClassesKeyword": "#D7BA7D",
+            "collieClassAliasName": "#4FC1FF",
+            "collieClassAliasUsage": "#4EC9B0"
+          }
+        }
+      }
     }
   },
   "scripts": {

@@ -41,5 +41,4 @@ import './hover/provider';
 import './completions/provider';
 import './lang/cacheWatcher';
 import './customization/commands';
-import './conversion/convertSelection';
-import './conversion/collieExportCommands';
+import './conversion/commands';

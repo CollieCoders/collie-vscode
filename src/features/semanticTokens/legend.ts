@@ -8,7 +8,10 @@ export const collieSemanticTokenTypes = [
   'colliePropsField',
   'collieInterpolation',
   'colliePipeText',
-  'collieComment'
+  'collieComment',
+  'collieClassesKeyword',
+  'collieClassAliasName',
+  'collieClassAliasUsage'
 ] as const;
 
 export type CollieSemanticTokenType = (typeof collieSemanticTokenTypes)[number];

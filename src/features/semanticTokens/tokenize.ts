@@ -10,6 +10,7 @@ export interface CollieSemanticToken {
 interface TokenizerState {
   inBlockComment: boolean;
   propsIndent: number | null;
+  classesIndent: number | null;
 }
 
 interface Segment {
@@ -18,18 +19,21 @@ interface Segment {
 }
 
 const directivePattern = /@(if|elseIf|else)\b/g;
-const classShorthandPattern = /\.[A-Za-z_][\w-]*/g;
+const classShorthandPattern = /\.(?:\$[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][\w-]*)/g;
 const interpolationPattern = /\{\{.*?\}\}/g;
 const propsKeywordPattern = /^(\s*)(props)\b/;
 const propsFieldPattern = /^(\s*)([A-Za-z_][\w-]*)(\??)\s*:/;
 const tagPattern = /^(\s*)([A-Za-z][\w-]*)/;
 const pipeTextPattern = /^(\s*)\|/;
+const classesKeywordPattern = /^(\s*)(classes)\b/;
+const classAliasLinePattern = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*=/;
 
 export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[] {
   const tokens: CollieSemanticToken[] = [];
   const state: TokenizerState = {
     inBlockComment: false,
-    propsIndent: null
+    propsIndent: null,
+    classesIndent: null
   };
 
   const lines = text.split(/\r?\n/);
@@ -55,6 +59,13 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
         // stay inside props block on blank lines
       } else if (indent <= state.propsIndent && !propsKeywordPattern.test(lineText)) {
         state.propsIndent = null;
+      }
+    }
+    if (state.classesIndent !== null) {
+      if (nonWhitespace.length === 0) {
+        // stay inside classes block on blank lines
+      } else if (indent <= state.classesIndent && !classesKeywordPattern.test(lineText)) {
+        state.classesIndent = null;
       }
     }
 
@@ -95,7 +106,24 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
       }
     }
 
+    const classesKeywordMatch = classesKeywordPattern.exec(lineText);
+    classesKeywordPattern.lastIndex = 0;
+    if (classesKeywordMatch) {
+      const start = classesKeywordMatch[1].length;
+      const keywordLength = classesKeywordMatch[2].length;
+      if (!overlaps(commentSegments, start, keywordLength)) {
+        pushToken(tokens, {
+          line,
+          startCharacter: start,
+          length: keywordLength,
+          type: 'collieClassesKeyword'
+        });
+        state.classesIndent = start;
+      }
+    }
+
     const inPropsBlock = state.propsIndent !== null && indent > state.propsIndent;
+    const inClassesBlock = state.classesIndent !== null && indent > state.classesIndent;
 
     if (inPropsBlock) {
       const propsFieldMatch = propsFieldPattern.exec(lineText);
@@ -109,6 +137,23 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
             startCharacter: start,
             length: fieldName.length,
             type: 'colliePropsField'
+          });
+        }
+      }
+    }
+
+    if (inClassesBlock) {
+      const classAliasMatch = classAliasLinePattern.exec(lineText);
+      classAliasLinePattern.lastIndex = 0;
+      if (classAliasMatch) {
+        const start = classAliasMatch[1].length;
+        const alias = classAliasMatch[2];
+        if (!overlaps(commentSegments, start, alias.length)) {
+          pushToken(tokens, {
+            line,
+            startCharacter: start,
+            length: alias.length,
+            type: 'collieClassAliasName'
           });
         }
       }
@@ -159,12 +204,21 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
       const start = classMatch.index;
       const length = classMatch[0].length;
       if (!overlaps(commentSegments, start, length)) {
-        pushToken(tokens, {
-          line,
-          startCharacter: start,
-          length,
-          type: 'collieClassShorthand'
-        });
+        if (classMatch[0][1] === '$') {
+          pushToken(tokens, {
+            line,
+            startCharacter: start + 1,
+            length: length - 1,
+            type: 'collieClassAliasUsage'
+          });
+        } else {
+          pushToken(tokens, {
+            line,
+            startCharacter: start,
+            length,
+            type: 'collieClassShorthand'
+          });
+        }
       }
     }
 

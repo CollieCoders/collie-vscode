@@ -3,10 +3,10 @@ import { activateFeatures } from './features';
 import { createLogger } from './logger';
 
 export async function activate(context: ExtensionContext) {
-  console.log('Collie extension activating');
-
   const logger = createLogger();
   context.subscriptions.push(logger);
+
+  logger.info('Collie extension activating');
 
   await activateFeatures(context, logger);
 
@@ -14,5 +14,5 @@ export async function activate(context: ExtensionContext) {
 }
 
 export function deactivate() {
-  console.log('Collie extension deactivated');
+  // No-op; VS Code handles teardown.
 }
