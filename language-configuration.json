@@ -25,7 +25,7 @@
     ["`", "`"]
   ],
   "indentationRules": {
-    "increaseIndentPattern": "^\\s*(?:@(?:if|elseIf)\\b.*|\\S.*:\\s*)$",
+    "increaseIndentPattern": "^\\s*(?:@(?:if|elseIf|for)\\b.*|[A-Za-z].*:\\s*|=\\s*.*\\(\\s*)$",
     "decreaseIndentPattern": "^\\s*(?:@else\\b.*|[\\]\\)\\}].*)$"
   },
   "onEnterRules": [

@@ -20,7 +20,7 @@ export interface RootNode {
   span?: SourceSpan;
 }
 
-export type Node = ElementNode | TextNode | ExpressionNode | ConditionalNode;
+export type Node = ElementNode | TextNode | ExpressionNode | ConditionalNode | ForLoopNode;
 
 export interface ElementNode {
   type: 'Element';
@@ -67,6 +67,14 @@ export interface ConditionalBranch {
 export interface ConditionalNode {
   type: 'Conditional';
   branches: ConditionalBranch[];
+  span?: SourceSpan;
+}
+
+export interface ForLoopNode {
+  type: 'ForLoop';
+  variable: string;
+  iterable: string;
+  body: Node[];
   span?: SourceSpan;
 }
 

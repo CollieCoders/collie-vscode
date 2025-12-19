@@ -5,6 +5,7 @@ import { registerFeature } from '..';
 import type {
   ClassAliasDecl,
   ConditionalNode,
+  ForLoopNode,
   Node,
   PropsDecl,
   PropsField,
@@ -15,7 +16,7 @@ import type { SourceSpan } from '../../format/parser/diagnostics';
 import { getParsedDocument } from '../../lang/cache';
 import { isFeatureFlagEnabled } from '../featureFlags';
 
-type DirectiveKind = '@if' | '@elseIf' | '@else';
+type DirectiveKind = '@if' | '@elseIf' | '@else' | '@for';
 
 const DIRECTIVE_HOVER_CONTENT: Record<DirectiveKind, { description: string; example: string }> = {
   '@if': {
@@ -29,6 +30,10 @@ const DIRECTIVE_HOVER_CONTENT: Record<DirectiveKind, { description: string; exam
   '@else': {
     description: 'Fallback branch rendered when all previous conditions fail.',
     example: `@else\n  | Fallback content`
+  },
+  '@for': {
+    description: 'Loop over an iterable and render the block for each item.',
+    example: `@for item in items\n  div.item {item.name}`
   }
 };
 
@@ -78,6 +83,14 @@ function getDirectiveHover(offset: number, nodes: Node[]): Hover | undefined {
         if (childHover) {
           return childHover;
         }
+      }
+    } else if (node.type === 'ForLoop') {
+      if (spanContains(node.span, offset)) {
+        return createDirectiveHover('@for');
+      }
+      const childHover = getDirectiveHover(offset, node.body);
+      if (childHover) {
+        return childHover;
       }
     } else if (node.type === 'Element') {
       const inner = getDirectiveHover(offset, node.children);

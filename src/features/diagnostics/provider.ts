@@ -13,7 +13,7 @@ import type { ParsedDocument } from '../../lang';
 import type { Diagnostic as ParserDiagnostic, SourceSpan } from '../../format/parser/diagnostics';
 import { isFeatureFlagEnabled, onDidChangeFeatureFlags } from '../featureFlags';
 
-const SUPPORTED_DIRECTIVES = new Set(['@if', '@elseIf', '@else']);
+const SUPPORTED_DIRECTIVES = new Set(['@if', '@elseIf', '@else', '@for']);
 const DIAGNOSTIC_DEBOUNCE_MS = 200;
 const pendingDiagnostics = new Map<string, ReturnType<typeof setTimeout>>();
 

@@ -17,7 +17,7 @@ import type { ParsedDocument } from '../../lang';
 import { getParsedDocument } from '../../lang/cache';
 import { isFeatureFlagEnabled } from '../featureFlags';
 
-const DIRECTIVE_LABELS = ['@if', '@elseIf', '@else'] as const;
+const DIRECTIVE_LABELS = ['@if', '@elseIf', '@else', '@for'] as const;
 const COMMON_TAGS = ['div', 'span', 'section', 'header', 'footer', 'main', 'nav', 'button', 'input', 'label', 'article'];
 const HTML_TAG_SET = new Set(COMMON_TAGS);
 const COMPONENT_EXTENSIONS = new Set(['.collie', '.tsx']);

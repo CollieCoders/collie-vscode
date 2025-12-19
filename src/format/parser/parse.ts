@@ -5,6 +5,7 @@ import type {
   ConditionalNode,
   ElementNode,
   ExpressionNode,
+  ForLoopNode,
   Node,
   PropsField,
   RootNode,
@@ -252,6 +253,22 @@ export function parse(source: string): ParseResult {
 
     const parent = stack[stack.length - 1].node;
 
+    if (trimmed.startsWith('@for')) {
+      const forLoop = parseForLoop(
+        trimmed,
+        lineNumber,
+        indent + 1,
+        lineOffset,
+        diagnostics
+      );
+      if (!forLoop) {
+        continue;
+      }
+      parent.children.push(forLoop);
+      stack.push({ node: forLoop, level });
+      continue;
+    }
+
     if (trimmed.startsWith('@if')) {
       const header = parseConditionalHeader(
         'if',
@@ -412,6 +429,14 @@ export function parse(source: string): ParseResult {
       continue;
     }
 
+    if (lineContent.startsWith('= ')) {
+      const exprNode = parseEqualsExpressionLine(lineContent, lineNumber, indent + 1, lineOffset, diagnostics);
+      if (exprNode) {
+        parent.children.push(exprNode);
+      }
+      continue;
+    }
+
     if (lineContent.startsWith('{{')) {
       const exprNode = parseExpressionLine(lineContent, lineNumber, indent + 1, lineOffset, diagnostics);
       if (exprNode) {
@@ -553,6 +578,39 @@ function parseElseHeader(
   };
 }
 
+function parseForLoop(
+  trimmed: string,
+  lineNumber: number,
+  column: number,
+  lineOffset: number,
+  diagnostics: Diagnostic[]
+): ForLoopNode | null {
+  const match = trimmed.match(/^@for\s+([A-Za-z_][\w]*)\s+in\s+([A-Za-z_][\w.[\]]*)/);
+  if (!match) {
+    pushDiag(
+      diagnostics,
+      'COLLIE210',
+      'Invalid @for syntax. Use @for variable in iterable',
+      lineNumber,
+      column,
+      lineOffset,
+      trimmed.length
+    );
+    return null;
+  }
+
+  const variable = match[1];
+  const iterable = match[2];
+
+  return {
+    type: 'ForLoop',
+    variable,
+    iterable,
+    body: [],
+    span: createSpan(lineNumber, column, trimmed.length, lineOffset)
+  };
+}
+
 function parseInlineNode(
   source: string,
   lineNumber: number,
@@ -567,6 +625,10 @@ function parseInlineNode(
 
   if (trimmed.startsWith('|')) {
     return parseTextLine(trimmed, lineNumber, column, lineOffset, diagnostics, 'inline');
+  }
+
+  if (trimmed.startsWith('= ')) {
+    return parseEqualsExpressionLine(trimmed, lineNumber, column, lineOffset, diagnostics);
   }
 
   if (trimmed.startsWith('{{')) {
@@ -623,8 +685,29 @@ function parseTextLine(
   let cursor = 0;
 
   while (cursor < payload.length) {
-    const nextOpen = payload.indexOf('{{', cursor);
+    const nextDoubleOpen = payload.indexOf('{{', cursor);
+    const nextSingleOpen = payload.indexOf('{', cursor);
     const nextClose = payload.indexOf('}}', cursor);
+
+    // Determine which opening brace comes first
+    let nextOpen = -1;
+    let isSingleBrace = false;
+    
+    if (nextSingleOpen !== -1 && nextDoubleOpen !== -1) {
+      if (nextSingleOpen < nextDoubleOpen) {
+        nextOpen = nextSingleOpen;
+        isSingleBrace = true;
+      } else {
+        nextOpen = nextDoubleOpen;
+        isSingleBrace = false;
+      }
+    } else if (nextSingleOpen !== -1) {
+      nextOpen = nextSingleOpen;
+      isSingleBrace = true;
+    } else if (nextDoubleOpen !== -1) {
+      nextOpen = nextDoubleOpen;
+      isSingleBrace = false;
+    }
 
     if (nextClose !== -1 && (nextOpen === -1 || nextClose < nextOpen)) {
       const leadingText = payload.slice(cursor, nextClose);
@@ -656,42 +739,83 @@ function parseTextLine(
       parts.push({ type: 'text', value: payload.slice(cursor, nextOpen) });
     }
 
-    const exprEnd = payload.indexOf('}}', nextOpen + 2);
-    if (exprEnd === -1) {
-      pushDiag(
-        diagnostics,
-        'COLLIE005',
-        'Inline expression must end with }}.',
-        lineNumber,
-        payloadColumn + nextOpen,
-        lineOffset
-      );
-      const remainder = payload.slice(nextOpen);
-      if (remainder.length) {
-        parts.push({ type: 'text', value: remainder });
+    if (isSingleBrace) {
+      // Handle single brace {expr}
+      const exprEnd = payload.indexOf('}', nextOpen + 1);
+      if (exprEnd === -1) {
+        pushDiag(
+          diagnostics,
+          'COLLIE005',
+          'Inline expression must end with }.',
+          lineNumber,
+          payloadColumn + nextOpen,
+          lineOffset
+        );
+        const remainder = payload.slice(nextOpen);
+        if (remainder.length) {
+          parts.push({ type: 'text', value: remainder });
+        }
+        break;
       }
-      break;
-    }
 
-    const inner = payload.slice(nextOpen + 2, exprEnd).trim();
-    if (!inner) {
-      pushDiag(
-        diagnostics,
-        'COLLIE005',
-        'Inline expression cannot be empty.',
-        lineNumber,
-        payloadColumn + nextOpen,
-        lineOffset,
-        exprEnd - nextOpen
-      );
+      const inner = payload.slice(nextOpen + 1, exprEnd).trim();
+      if (!inner) {
+        pushDiag(
+          diagnostics,
+          'COLLIE005',
+          'Inline expression cannot be empty.',
+          lineNumber,
+          payloadColumn + nextOpen,
+          lineOffset,
+          exprEnd - nextOpen + 1
+        );
+      } else {
+        const exprColumn = payloadColumn + nextOpen;
+        const exprLength = exprEnd - nextOpen + 1;
+        const exprSpan = createSpan(lineNumber, exprColumn, Math.max(exprLength, 1), lineOffset);
+        parts.push({ type: 'expr', value: inner, span: exprSpan });
+      }
+
+      cursor = exprEnd + 1;
     } else {
-      const exprColumn = payloadColumn + nextOpen;
-      const exprLength = exprEnd - nextOpen + 2;
-      const exprSpan = createSpan(lineNumber, exprColumn, Math.max(exprLength, 1), lineOffset);
-      parts.push({ type: 'expr', value: inner, span: exprSpan });
-    }
+      // Handle double brace {{expr}}
+      const exprEnd = payload.indexOf('}}', nextOpen + 2);
+      if (exprEnd === -1) {
+        pushDiag(
+          diagnostics,
+          'COLLIE005',
+          'Inline expression must end with }}.',
+          lineNumber,
+          payloadColumn + nextOpen,
+          lineOffset
+        );
+        const remainder = payload.slice(nextOpen);
+        if (remainder.length) {
+          parts.push({ type: 'text', value: remainder });
+        }
+        break;
+      }
 
-    cursor = exprEnd + 2;
+      const inner = payload.slice(nextOpen + 2, exprEnd).trim();
+      if (!inner) {
+        pushDiag(
+          diagnostics,
+          'COLLIE005',
+          'Inline expression cannot be empty.',
+          lineNumber,
+          payloadColumn + nextOpen,
+          lineOffset,
+          exprEnd - nextOpen + 2
+        );
+      } else {
+        const exprColumn = payloadColumn + nextOpen;
+        const exprLength = exprEnd - nextOpen + 2;
+        const exprSpan = createSpan(lineNumber, exprColumn, Math.max(exprLength, 1), lineOffset);
+        parts.push({ type: 'expr', value: inner, span: exprSpan });
+      }
+
+      cursor = exprEnd + 2;
+    }
   }
 
   return { type: 'Text', parts, placement, span };
@@ -741,6 +865,45 @@ function parseExpressionLine(
       column,
       lineOffset,
       closeIndex + 2
+    );
+    return null;
+  }
+
+  return { type: 'Expression', value: inner, span };
+}
+
+function parseEqualsExpressionLine(
+  line: string,
+  lineNumber: number,
+  column: number,
+  lineOffset: number,
+  diagnostics: Diagnostic[]
+): ExpressionNode | null {
+  const trimmed = line.trimEnd();
+  const span = createSpan(lineNumber, column, Math.max(trimmed.length || 1, 1), lineOffset);
+  
+  if (!trimmed.startsWith('= ')) {
+    pushDiag(
+      diagnostics,
+      'COLLIE005',
+      'Expression lines must start with = followed by a space.',
+      lineNumber,
+      column,
+      lineOffset
+    );
+    return null;
+  }
+
+  const inner = trimmed.slice(2).trim();
+  if (!inner) {
+    pushDiag(
+      diagnostics,
+      'COLLIE005',
+      'Expression cannot be empty.',
+      lineNumber,
+      column,
+      lineOffset,
+      trimmed.length
     );
     return null;
   }

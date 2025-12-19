@@ -19,7 +19,9 @@ interface Segment {
 }
 
 const directivePattern = /@(if|elseIf|else)\b/g;
+const forLoopPattern = /@for\s+([A-Za-z_][\w]*)\s+in\s+([A-Za-z_][\w.[\]]*)/g;
 const classShorthandPattern = /\.(?:\$[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][\w-]*)/g;
+const singleBracePattern = /(?<!\{)\{(?!\{).*?(?<!\})\}(?!\})/g;
 const interpolationPattern = /\{\{.*?\}\}/g;
 const propsKeywordPattern = /^(\s*)(props)\b/;
 const propsFieldPattern = /^(\s*)([A-Za-z_][\w-]*)(\??)\s*:/;
@@ -27,6 +29,7 @@ const tagPattern = /^(\s*)([A-Za-z][\w-]*)/;
 const pipeTextPattern = /^(\s*)\|/;
 const classesKeywordPattern = /^(\s*)(classes)\b/;
 const classAliasLinePattern = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*=/;
+const expressionLinePattern = /^(\s*)(=)\s+/;
 
 export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[] {
   const tokens: CollieSemanticToken[] = [];
@@ -159,6 +162,38 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
       }
     }
 
+    // Expression lines (= expression)
+    const expressionLineMatch = expressionLinePattern.exec(lineText);
+    expressionLinePattern.lastIndex = 0;
+    if (expressionLineMatch) {
+      const start = expressionLineMatch[1].length;
+      const equalsLength = expressionLineMatch[2].length;
+      if (!overlaps(commentSegments, start, equalsLength)) {
+        pushToken(tokens, {
+          line,
+          startCharacter: start,
+          length: equalsLength,
+          type: 'collieExpressionLine'
+        });
+      }
+    }
+
+    // @for loops
+    forLoopPattern.lastIndex = 0;
+    let forMatch: RegExpExecArray | null;
+    while ((forMatch = forLoopPattern.exec(lineText))) {
+      const start = forMatch.index;
+      const length = forMatch[0].length;
+      if (!overlaps(commentSegments, start, length)) {
+        pushToken(tokens, {
+          line,
+          startCharacter: start,
+          length,
+          type: 'collieForLoop'
+        });
+      }
+    }
+
     // Directives
     directivePattern.lastIndex = 0;
     let directiveMatch: RegExpExecArray | null;
@@ -184,14 +219,17 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
         const tagName = tagMatch[2];
         if (
           tagName !== 'props' &&
+          tagName !== 'classes' &&
           !lineText.slice(start, start + tagName.length).startsWith('@') &&
           !overlaps(commentSegments, start, tagName.length)
         ) {
+          // Distinguish between components (capitalized) and HTML tags (lowercase)
+          const tokenType = /^[A-Z]/.test(tagName) ? 'collieComponent' : 'collieTag';
           pushToken(tokens, {
             line,
             startCharacter: start,
             length: tagName.length,
-            type: 'collieTag'
+            type: tokenType
           });
         }
       }
@@ -219,6 +257,22 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
             type: 'collieClassShorthand'
           });
         }
+      }
+    }
+
+    // Single-brace interpolation {expr}
+    singleBracePattern.lastIndex = 0;
+    let singleBraceMatch: RegExpExecArray | null;
+    while ((singleBraceMatch = singleBracePattern.exec(lineText))) {
+      const start = singleBraceMatch.index;
+      const length = singleBraceMatch[0].length;
+      if (!overlaps(commentSegments, start, length)) {
+        pushToken(tokens, {
+          line,
+          startCharacter: start,
+          length,
+          type: 'collieSingleBraceInterpolation'
+        });
       }
     }
 
