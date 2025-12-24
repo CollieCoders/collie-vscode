@@ -18,7 +18,7 @@ tools: [
   'todo',
   'search/changes'
 ]
-model: 'GPT-5.1-Codex-Max'
+model: 'Claude Sonnet 4.5'
 ---
 
 # Hero Agent — Operating Instructions

@@ -17,6 +17,9 @@ export interface RootNode {
   children: Node[];
   props?: PropsDecl;
   classAliases?: ClassAliasesDecl;
+  id?: string;
+  rawId?: string;
+  idSpan?: SourceSpan;
   span?: SourceSpan;
 }
 

@@ -187,7 +187,9 @@
             "collieComment": "#6A9955",
             "collieClassesKeyword": "#D7BA7D",
             "collieClassAliasName": "#4FC1FF",
-            "collieClassAliasUsage": "#4EC9B0"
+            "collieClassAliasUsage": "#4EC9B0",
+            "collieIdKeyword": "#C586C0",
+            "collieIdValue": "#DCDCAA"
           }
         }
       }

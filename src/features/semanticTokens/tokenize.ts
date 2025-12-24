@@ -23,6 +23,7 @@ const forLoopPattern = /@for\s+([A-Za-z_][\w]*)\s+in\s+([A-Za-z_][\w.[\]]*)/g;
 const classShorthandPattern = /\.(?:\$[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][\w-]*)/g;
 const singleBracePattern = /(?<!\{)\{(?!\{).*?(?<!\})\}(?!\})/g;
 const interpolationPattern = /\{\{.*?\}\}/g;
+const idDirectivePattern = /^(\s*)(#?id)(?:\s+|:\s*|=\s*)(.+)$/i;
 const propsKeywordPattern = /^(\s*)(props)\b/;
 const propsFieldPattern = /^(\s*)([A-Za-z_][\w-]*)(\??)\s*:/;
 const tagPattern = /^(\s*)([A-Za-z][\w-]*)/;
@@ -90,6 +91,40 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
           type: 'colliePipeText'
         });
         continue;
+      }
+    }
+
+    // ID directive (case-insensitive)
+    const idDirectiveMatch = idDirectivePattern.exec(lineText);
+    idDirectivePattern.lastIndex = 0;
+    if (idDirectiveMatch) {
+      const indentLength = idDirectiveMatch[1].length;
+      const keywordPart = idDirectiveMatch[2];
+      const valuePart = idDirectiveMatch[3].trim();
+      
+      // Tokenize keyword (#id, id, ID, etc.)
+      if (!overlaps(commentSegments, indentLength, keywordPart.length)) {
+        pushToken(tokens, {
+          line,
+          startCharacter: indentLength,
+          length: keywordPart.length,
+          type: 'collieIdKeyword'
+        });
+      }
+      
+      // Find the start of the value (after keyword and separator)
+      const fullMatch = idDirectiveMatch[0];
+      const valueStartInMatch = fullMatch.indexOf(valuePart);
+      if (valueStartInMatch !== -1) {
+        const valueStart = valueStartInMatch;
+        if (!overlaps(commentSegments, valueStart, valuePart.length)) {
+          pushToken(tokens, {
+            line,
+            startCharacter: valueStart,
+            length: valuePart.length,
+            type: 'collieIdValue'
+          });
+        }
       }
     }
 
