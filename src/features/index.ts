@@ -42,6 +42,7 @@ import './diagnostics/provider';
 import './hover/provider';
 import './completions/provider';
 import './completions/htmlCollieIdProvider';
+import './symbols/workspaceSymbolProvider';
 import './lang/cacheWatcher';
 import './customization/commands';
 import './conversion/commands';
