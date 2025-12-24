@@ -37,6 +37,7 @@ import './semanticTokens/provider';
 import './navigation/documentSymbols';
 import './navigation/definitionProvider';
 import './navigation/htmlToCollieDefinitionProvider';
+import './navigation/commands';
 import './diagnostics/provider';
 import './hover/provider';
 import './completions/provider';
