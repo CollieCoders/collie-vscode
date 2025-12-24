@@ -1,10 +1,11 @@
 import { dirname, join } from 'path';
-import { FileType, Location, Position, Uri, languages, TextDocument, workspace } from 'vscode';
+import { FileType, Location, Position, Range, Uri, languages, TextDocument, workspace, type DefinitionLink } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
 import type { ElementNode, Node } from '../../format/parser/ast';
 import type { SourceSpan } from '../../format/parser/diagnostics';
 import { getParsedDocument } from '../../lang/cache';
+import { findHtmlAnchorsByLogicalId } from '../../lang/navigation';
 import { isFeatureFlagEnabled } from '../featureFlags';
 
 const COMPONENT_EXTENSIONS = ['.collie', '.tsx'] as const;
@@ -30,6 +31,56 @@ function spanContains(span: SourceSpan | undefined, offset: number): boolean {
     return false;
   }
   return offset >= span.start.offset && offset < span.end.offset;
+}
+
+/**
+ * Attempts to provide definition for ID directive navigation (Collie → HTML).
+ * Returns definition links if cursor is on the ID directive value, undefined otherwise.
+ */
+async function provideIdDirectiveDefinition(
+  document: TextDocument,
+  position: Position,
+  context: FeatureContext
+): Promise<DefinitionLink[] | undefined> {
+  try {
+    const parsed = getParsedDocument(document);
+    const offset = document.offsetAt(position);
+    
+    // Check if cursor is on the ID directive value
+    if (!parsed.ast.idSpan || !spanContains(parsed.ast.idSpan, offset)) {
+      return undefined;
+    }
+    
+    // Get the logical ID
+    const logicalId = parsed.ast.id;
+    if (!logicalId) {
+      return undefined;
+    }
+    
+    // Find HTML anchors for this template ID
+    const htmlAnchors = findHtmlAnchorsByLogicalId(logicalId);
+    if (htmlAnchors.length === 0) {
+      return undefined;
+    }
+    
+    // Create definition links for each HTML anchor
+    const definitionLinks: DefinitionLink[] = [];
+    
+    for (const anchor of htmlAnchors) {
+      for (const range of anchor.ranges) {
+        definitionLinks.push({
+          targetUri: anchor.uri,
+          targetRange: range,
+          targetSelectionRange: range
+        });
+      }
+    }
+    
+    return definitionLinks.length > 0 ? definitionLinks : undefined;
+  } catch (error) {
+    context.logger.error('ID directive definition provider failed.', error);
+    return undefined;
+  }
 }
 
 function findComponentNode(nodes: Node[], offset: number): ElementNode | null {
@@ -105,6 +156,13 @@ async function provideDefinition(document: TextDocument, position: Position, con
   }
 
   try {
+    // First, check if cursor is on ID directive (Collie → HTML navigation)
+    const idDefinition = await provideIdDirectiveDefinition(document, position, context);
+    if (idDefinition) {
+      return idDefinition;
+    }
+    
+    // Otherwise, handle component references (existing behavior)
     const parsed = getParsedDocument(document);
     const offset = document.offsetAt(position);
     const targetNode = findComponentNode(parsed.ast.children, offset);

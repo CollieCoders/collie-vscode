@@ -2,7 +2,7 @@
   "name": "collie-vscode",
   "displayName": "Collie",
   "description": "VS Code language support for Collie templates",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "collie",
   "license": "MIT",
   "repository": "https://github.com/collie-lang/collie-vscode",
@@ -156,6 +156,12 @@
         "title": "Collie: Copy as TSX",
         "description": "Convert the active Collie document into a typed TSX snippet and copy it to the clipboard.",
         "category": "Collie"
+      },
+      {
+        "command": "collie.openCompiledHtmlPartial",
+        "title": "Collie: Open Compiled HTML Partial",
+        "description": "Open the compiled HTML partial (collie/dist/<id>.html) for the active Collie template.",
+        "category": "Collie"
       }
     ],
     "menus": {
@@ -187,7 +193,9 @@
             "collieComment": "#6A9955",
             "collieClassesKeyword": "#D7BA7D",
             "collieClassAliasName": "#4FC1FF",
-            "collieClassAliasUsage": "#4EC9B0"
+            "collieClassAliasUsage": "#4EC9B0",
+            "collieIdKeyword": "#C586C0",
+            "collieIdValue": "#DCDCAA"
           }
         }
       }
@@ -200,9 +208,11 @@
     "lint": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/node": "^25.0.3",
     "@types/vscode": "^1.87.0",
     "@vscode/vsce": "^3.1.1",
     "esbuild": "^0.24.0",
     "typescript": "^5.6.3"
-  }
+  },
+  "packageManager": "pnpm@10.26.2+sha512.0e308ff2005fc7410366f154f625f6631ab2b16b1d2e70238444dd6ae9d630a8482d92a451144debc492416896ed16f7b114a86ec68b8404b2443869e68ffda6"
 }

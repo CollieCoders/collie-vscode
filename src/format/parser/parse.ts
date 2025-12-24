@@ -134,6 +134,43 @@ export function parse(source: string): ParseResult {
       conditionalChains.delete(level);
     }
 
+    // Parse ID directive (case-insensitive, supports multiple forms)
+    const idMatch = /^(?:#|)id(?:\s+|:\s*|=\s*)(.+)$/i.exec(trimmed);
+    if (idMatch) {
+      const rawValue = idMatch[1].trim();
+      if (level !== 0) {
+        pushDiag(
+          diagnostics,
+          'COLLIE401',
+          'ID directive must be at the top level.',
+          lineNumber,
+          indent + 1,
+          lineOffset,
+          trimmed.length
+        );
+      } else if (root.children.length > 0 || root.props || root.classAliases) {
+        pushDiag(
+          diagnostics,
+          'COLLIE402',
+          'ID directive must appear before props, classes, and any template nodes.',
+          lineNumber,
+          indent + 1,
+          lineOffset,
+          trimmed.length
+        );
+      } else {
+        root.rawId = rawValue;
+        // Normalize: strip trailing -collie
+        let normalized = rawValue;
+        if (normalized.endsWith('-collie')) {
+          normalized = normalized.slice(0, -7).trim();
+        }
+        root.id = normalized || rawValue;
+        root.idSpan = createSpan(lineNumber, indent + 1, trimmed.length, lineOffset);
+      }
+      continue;
+    }
+
     if (trimmed === 'props') {
       if (level !== 0) {
         pushDiag(

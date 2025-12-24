@@ -3,15 +3,18 @@ import {
   DiagnosticSeverity,
   languages,
   Range,
-  workspace
+  workspace,
+  Uri
 } from 'vscode';
 import type { TextDocument } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
-import { getParsedDocument, invalidateParsedDocument } from '../../lang/cache';
+import { getParsedDocument, invalidateParsedDocument, getTemplateIdEntries } from '../../lang/cache';
+import { hasHtmlPlaceholder, onHtmlAnchorsChanged } from '../../lang/htmlAnchorIndex';
 import type { ParsedDocument } from '../../lang';
 import type { Diagnostic as ParserDiagnostic, SourceSpan } from '../../format/parser/diagnostics';
 import { isFeatureFlagEnabled, onDidChangeFeatureFlags } from '../featureFlags';
+import * as path from 'path';
 
 const SUPPORTED_DIRECTIVES = new Set(['@if', '@elseIf', '@else', '@for']);
 const DIAGNOSTIC_DEBOUNCE_MS = 200;
@@ -134,6 +137,114 @@ function collectUnknownDirectiveDiagnostics(document: TextDocument): VSDiagnosti
   return diagnostics;
 }
 
+function collectIdCollisionDiagnostics(document: TextDocument, parsed: ParsedDocument): VSDiagnostic[] {
+  const diagnostics: VSDiagnostic[] = [];
+  const currentUri = document.uri.toString();
+  
+  // Determine this document's template ID
+  let templateId: string;
+  let idSpan: SourceSpan | undefined;
+  let isExplicit: boolean;
+  
+  if (parsed.ast.id) {
+    templateId = parsed.ast.id;
+    idSpan = parsed.ast.idSpan;
+    isExplicit = true;
+  } else {
+    const basename = path.basename(document.uri.fsPath, '.collie');
+    let normalized = basename;
+    if (normalized.endsWith('-collie')) {
+      normalized = normalized.slice(0, -7);
+    }
+    templateId = normalized;
+    isExplicit = false;
+  }
+  
+  // Get all entries with this ID
+  const entries = getTemplateIdEntries(templateId);
+  
+  // If there are multiple entries with the same ID, we have a collision
+  if (entries.length > 1) {
+    // Find the other files (not this one)
+    const others = entries.filter(entry => entry.uri.toString() !== currentUri);
+    
+    if (others.length > 0) {
+      let range: Range;
+      
+      if (isExplicit && idSpan) {
+        // Use the ID directive span
+        range = spanToRange(document, idSpan);
+      } else {
+        // Use filename span (first line, or a reasonable placeholder)
+        range = new Range(0, 0, 0, templateId.length);
+      }
+      
+      // Build the diagnostic message
+      const othersList = others.map(entry => {
+        const relativePath = workspace.asRelativePath(entry.uri);
+        const type = entry.derivedFromFilename ? 'implicit' : 'explicit';
+        return `- ${relativePath} (${type})`;
+      }).join('\n');
+      
+      const message = `Duplicate Collie template id "${templateId}".\nAlso defined in:\n${othersList}`;
+      
+      const diagnostic = new VSDiagnostic(range, message, DiagnosticSeverity.Error);
+      diagnostic.code = 'COLLIE403';
+      diagnostic.source = 'collie';
+      diagnostics.push(diagnostic);
+    }
+  }
+  
+  return diagnostics;
+}
+
+function collectMissingHtmlPlaceholderDiagnostics(document: TextDocument, parsed: ParsedDocument): VSDiagnostic[] {
+  const diagnostics: VSDiagnostic[] = [];
+  
+  // Determine this document's template ID
+  let templateId: string;
+  let idSpan: SourceSpan | undefined;
+  let isExplicit: boolean;
+  
+  if (parsed.ast.id) {
+    templateId = parsed.ast.id;
+    idSpan = parsed.ast.idSpan;
+    isExplicit = true;
+  } else {
+    const basename = path.basename(document.uri.fsPath, '.collie');
+    let normalized = basename;
+    if (normalized.endsWith('-collie')) {
+      normalized = normalized.slice(0, -7);
+    }
+    templateId = normalized;
+    isExplicit = false;
+  }
+  
+  // Check if there's a matching HTML placeholder
+  if (!hasHtmlPlaceholder(templateId)) {
+    let range: Range;
+    
+    if (isExplicit && idSpan) {
+      // Use the ID directive span
+      range = spanToRange(document, idSpan);
+    } else {
+      // Use filename span (first line)
+      range = new Range(0, 0, 0, Math.max(templateId.length, 1));
+    }
+    
+    const message = `Template id "${templateId}" has no matching HTML placeholder.\n` +
+      `The Collie runtime looks for id="${templateId}-collie" in your HTML.\n` +
+      `This template will not render until a placeholder exists.`;
+    
+    const diagnostic = new VSDiagnostic(range, message, DiagnosticSeverity.Warning);
+    diagnostic.code = 'COLLIE404';
+    diagnostic.source = 'collie';
+    diagnostics.push(diagnostic);
+  }
+  
+  return diagnostics;
+}
+
 function createDiagnostic(range: Range, message: string, code: string): VSDiagnostic {
   const diagnostic = new VSDiagnostic(range, message, DiagnosticSeverity.Error);
   diagnostic.code = code;
@@ -166,6 +277,8 @@ function applyDiagnostics(
 
   if (parsed) {
     diagnostics.push(...collectParserDiagnostics(document, parsed));
+    diagnostics.push(...collectIdCollisionDiagnostics(document, parsed));
+    diagnostics.push(...collectMissingHtmlPlaceholderDiagnostics(document, parsed));
   }
 
   diagnostics.push(...collectUnknownDirectiveDiagnostics(document));
@@ -187,8 +300,24 @@ function scheduleDiagnostics(
   const handle = setTimeout(() => {
     pendingDiagnostics.delete(key);
     applyDiagnostics(document, collection, context);
+    // After updating this document, refresh all other collie documents
+    // to update their ID collision diagnostics
+    refreshOtherCollieDocuments(document, collection, context);
   }, DIAGNOSTIC_DEBOUNCE_MS);
   pendingDiagnostics.set(key, handle);
+}
+
+function refreshOtherCollieDocuments(
+  changedDocument: TextDocument,
+  collection: ReturnType<typeof languages.createDiagnosticCollection>,
+  context: FeatureContext
+) {
+  const changedUri = changedDocument.uri.toString();
+  for (const document of workspace.textDocuments) {
+    if (document.languageId === 'collie' && document.uri.toString() !== changedUri) {
+      applyDiagnostics(document, collection, context);
+    }
+  }
 }
 
 function clearPendingDiagnostics(document: TextDocument) {
@@ -243,6 +372,15 @@ function activateDiagnosticsProvider(context: FeatureContext) {
         refreshOpenDocuments(collection, context);
       } else {
         collection.clear();
+      }
+    })
+  );
+  
+  // Refresh diagnostics when HTML anchors change
+  context.register(
+    onHtmlAnchorsChanged(() => {
+      if (isFeatureFlagEnabled('diagnostics')) {
+        refreshOpenDocuments(collection, context);
       }
     })
   );

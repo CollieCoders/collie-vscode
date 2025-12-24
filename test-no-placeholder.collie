@@ -1,0 +1,7 @@
+#id footer
+
+props
+  year: number
+
+footer.site-footer
+  p Copyright {{ year }}
