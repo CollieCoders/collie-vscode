@@ -1,0 +1,5 @@
+props
+  subtitle: string
+
+div.hero-alt
+  h2 {{ subtitle }}

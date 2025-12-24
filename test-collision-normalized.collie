@@ -1,0 +1,7 @@
+#id homeHero-collie
+
+props
+  text: string
+
+div.another-hero
+  p {{ text }}
