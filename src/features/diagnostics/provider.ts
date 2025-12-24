@@ -10,6 +10,7 @@ import type { TextDocument } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
 import { getParsedDocument, invalidateParsedDocument, getTemplateIdEntries } from '../../lang/cache';
+import { hasHtmlPlaceholder, onHtmlAnchorsChanged } from '../../lang/htmlAnchorIndex';
 import type { ParsedDocument } from '../../lang';
 import type { Diagnostic as ParserDiagnostic, SourceSpan } from '../../format/parser/diagnostics';
 import { isFeatureFlagEnabled, onDidChangeFeatureFlags } from '../featureFlags';
@@ -197,6 +198,53 @@ function collectIdCollisionDiagnostics(document: TextDocument, parsed: ParsedDoc
   return diagnostics;
 }
 
+function collectMissingHtmlPlaceholderDiagnostics(document: TextDocument, parsed: ParsedDocument): VSDiagnostic[] {
+  const diagnostics: VSDiagnostic[] = [];
+  
+  // Determine this document's template ID
+  let templateId: string;
+  let idSpan: SourceSpan | undefined;
+  let isExplicit: boolean;
+  
+  if (parsed.ast.id) {
+    templateId = parsed.ast.id;
+    idSpan = parsed.ast.idSpan;
+    isExplicit = true;
+  } else {
+    const basename = path.basename(document.uri.fsPath, '.collie');
+    let normalized = basename;
+    if (normalized.endsWith('-collie')) {
+      normalized = normalized.slice(0, -7);
+    }
+    templateId = normalized;
+    isExplicit = false;
+  }
+  
+  // Check if there's a matching HTML placeholder
+  if (!hasHtmlPlaceholder(templateId)) {
+    let range: Range;
+    
+    if (isExplicit && idSpan) {
+      // Use the ID directive span
+      range = spanToRange(document, idSpan);
+    } else {
+      // Use filename span (first line)
+      range = new Range(0, 0, 0, Math.max(templateId.length, 1));
+    }
+    
+    const message = `Template id "${templateId}" has no matching HTML placeholder.\n` +
+      `The Collie runtime looks for id="${templateId}-collie" in your HTML.\n` +
+      `This template will not render until a placeholder exists.`;
+    
+    const diagnostic = new VSDiagnostic(range, message, DiagnosticSeverity.Warning);
+    diagnostic.code = 'COLLIE404';
+    diagnostic.source = 'collie';
+    diagnostics.push(diagnostic);
+  }
+  
+  return diagnostics;
+}
+
 function createDiagnostic(range: Range, message: string, code: string): VSDiagnostic {
   const diagnostic = new VSDiagnostic(range, message, DiagnosticSeverity.Error);
   diagnostic.code = code;
@@ -230,6 +278,7 @@ function applyDiagnostics(
   if (parsed) {
     diagnostics.push(...collectParserDiagnostics(document, parsed));
     diagnostics.push(...collectIdCollisionDiagnostics(document, parsed));
+    diagnostics.push(...collectMissingHtmlPlaceholderDiagnostics(document, parsed));
   }
 
   diagnostics.push(...collectUnknownDirectiveDiagnostics(document));
@@ -323,6 +372,15 @@ function activateDiagnosticsProvider(context: FeatureContext) {
         refreshOpenDocuments(collection, context);
       } else {
         collection.clear();
+      }
+    })
+  );
+  
+  // Refresh diagnostics when HTML anchors change
+  context.register(
+    onHtmlAnchorsChanged(() => {
+      if (isFeatureFlagEnabled('diagnostics')) {
+        refreshOpenDocuments(collection, context);
       }
     })
   );
