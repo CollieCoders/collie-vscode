@@ -2,6 +2,7 @@ import {
   Diagnostic as VSDiagnostic,
   DiagnosticSeverity,
   languages,
+  Position,
   Range,
   workspace,
   Uri
@@ -28,9 +29,19 @@ function spanToRange(document: TextDocument, span?: SourceSpan): Range {
   if (!span) {
     return new Range(0, 0, 0, 0);
   }
-  const start = document.positionAt(span.start.offset);
-  const end = document.positionAt(span.end.offset);
+  const start = spanPositionToVs(document, span.start);
+  const end = spanPositionToVs(document, span.end);
   return new Range(start, end);
+}
+
+function spanPositionToVs(document: TextDocument, pos: SourceSpan['start']): Position {
+  const lineIndex = Math.min(
+    Math.max(pos.line - 1, 0),
+    Math.max(document.lineCount - 1, 0)
+  );
+  const lineText = document.lineAt(lineIndex).text;
+  const character = Math.min(Math.max(pos.col - 1, 0), lineText.length);
+  return new Position(lineIndex, character);
 }
 
 function convertParserDiagnostic(document: TextDocument, diagnostic: ParserDiagnostic): VSDiagnostic {
@@ -232,9 +243,8 @@ function collectMissingHtmlPlaceholderDiagnostics(document: TextDocument, parsed
       range = new Range(0, 0, 0, Math.max(templateId.length, 1));
     }
     
-    const message = `Template id "${templateId}" has no matching HTML placeholder.\n` +
-      `The Collie runtime looks for id="${templateId}-collie" in your HTML.\n` +
-      `This template will not render until a placeholder exists.`;
+    const message = `Template id "${templateId}" has no matching HTML placeholder. ` +
+      `Add id="${templateId}-collie" to your HTML to render this template.`;
     
     const diagnostic = new VSDiagnostic(range, message, DiagnosticSeverity.Warning);
     diagnostic.code = 'COLLIE404';
