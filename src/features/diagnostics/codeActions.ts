@@ -2,7 +2,9 @@ import {
   CodeAction,
   CodeActionKind,
   CodeActionProvider,
+  EndOfLine,
   languages,
+  Position,
   Range,
   TextDocument,
   WorkspaceEdit,
@@ -11,11 +13,207 @@ import {
   workspace,
   Uri
 } from 'vscode';
+import type { Diagnostic } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
 import { getTemplateIdEntries } from '../../lang/cache';
-import { getHtmlPlaceholders } from '../../lang/htmlAnchorIndex';
 // import * as path from 'path';
+
+const ID_DIRECTIVE_PATTERN = /^(?:#|)id(?:\s+|:\s*|=\s*)(.+)$/i;
+const DEFAULT_PROP_TYPE = 'unknown';
+
+type DiagnosticFix = {
+  range: Range;
+  replacementText: string;
+};
+
+type DiagnosticData = {
+  fix?: DiagnosticFix;
+  kind?: string;
+  propName?: string;
+};
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getEol(document: TextDocument): string {
+  return document.eol === EndOfLine.CRLF ? '\r\n' : '\n';
+}
+
+function getIndentSize(): number {
+  const config = workspace.getConfiguration('collie');
+  return Math.max(1, config.get<number>('format.indentSize', 2));
+}
+
+function findPropsBlock(document: TextDocument): { line: number; indent: number; insertLine: number } | null {
+  for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+    const line = document.lineAt(lineNumber);
+    if (line.text.trim() !== 'props') {
+      continue;
+    }
+
+    const propsIndent = line.firstNonWhitespaceCharacterIndex;
+    let insertLine = lineNumber + 1;
+
+    for (let i = lineNumber + 1; i < document.lineCount; i++) {
+      const nextLine = document.lineAt(i);
+      const trimmed = nextLine.text.trim();
+
+      if (trimmed.length === 0) {
+        continue;
+      }
+
+      if (nextLine.firstNonWhitespaceCharacterIndex <= propsIndent) {
+        insertLine = i;
+        return { line: lineNumber, indent: propsIndent, insertLine };
+      }
+
+      insertLine = i + 1;
+    }
+
+    return { line: lineNumber, indent: propsIndent, insertLine };
+  }
+
+  return null;
+}
+
+function hasPropDeclarationInBlock(
+  document: TextDocument,
+  propsBlock: { line: number; indent: number; insertLine: number },
+  propName: string
+): boolean {
+  const propPattern = new RegExp(`^${escapeRegExp(propName)}\\??\\s*:`); 
+  for (let i = propsBlock.line + 1; i < document.lineCount; i++) {
+    const line = document.lineAt(i);
+    const trimmed = line.text.trim();
+
+    if (trimmed.length === 0) {
+      continue;
+    }
+
+    const indent = line.firstNonWhitespaceCharacterIndex;
+    if (indent <= propsBlock.indent) {
+      break;
+    }
+
+    if (propPattern.test(trimmed)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function findInsertLineForNewPropsBlock(document: TextDocument): number {
+  for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+    const line = document.lineAt(lineNumber);
+    const trimmed = line.text.trim();
+
+    if (trimmed.length === 0) {
+      continue;
+    }
+
+    if (ID_DIRECTIVE_PATTERN.test(trimmed) && line.firstNonWhitespaceCharacterIndex === 0) {
+      return lineNumber + 1;
+    }
+
+    return lineNumber;
+  }
+
+  return 0;
+}
+
+function getInsertPosition(
+  document: TextDocument,
+  lineNumber: number
+): { position: Position; prefix: string } {
+  const eol = getEol(document);
+  if (lineNumber < document.lineCount) {
+    return { position: document.lineAt(lineNumber).range.start, prefix: '' };
+  }
+
+  const lastLine = document.lineAt(document.lineCount - 1);
+  const needsLeadingEol = lastLine.text.length > 0;
+  return {
+    position: lastLine.range.end,
+    prefix: needsLeadingEol ? eol : ''
+  };
+}
+
+function buildApplyFixAction(
+  document: TextDocument,
+  diagnostic: Diagnostic,
+  fix: DiagnosticFix
+): CodeAction {
+  const action = new CodeAction('Apply fix', CodeActionKind.QuickFix);
+  const edit = new WorkspaceEdit();
+  edit.replace(document.uri, fix.range, fix.replacementText);
+  action.edit = edit;
+  action.diagnostics = [diagnostic];
+  return action;
+}
+
+function buildDialectFixAction(
+  document: TextDocument,
+  diagnostic: Diagnostic,
+  fix: DiagnosticFix
+): CodeAction {
+  const action = new CodeAction('Convert to preferred token spelling', CodeActionKind.QuickFix);
+  const edit = new WorkspaceEdit();
+  edit.replace(document.uri, fix.range, fix.replacementText);
+  action.edit = edit;
+  action.diagnostics = [diagnostic];
+  return action;
+}
+
+function buildRemovePropAction(
+  document: TextDocument,
+  diagnostic: Diagnostic,
+  fix: DiagnosticFix
+): CodeAction {
+  const action = new CodeAction('Remove unused prop declaration', CodeActionKind.QuickFix);
+  const edit = new WorkspaceEdit();
+  edit.replace(document.uri, fix.range, fix.replacementText);
+  action.edit = edit;
+  action.diagnostics = [diagnostic];
+  return action;
+}
+
+function buildAddPropDeclarationAction(
+  document: TextDocument,
+  diagnostic: Diagnostic,
+  propName: string
+): CodeAction | null {
+  const propsBlock = findPropsBlock(document);
+  if (propsBlock && hasPropDeclarationInBlock(document, propsBlock, propName)) {
+    return null;
+  }
+
+  const indentSize = getIndentSize();
+  const eol = getEol(document);
+  const propLine = `${' '.repeat((propsBlock?.indent ?? 0) + indentSize)}${propName}: ${DEFAULT_PROP_TYPE}`;
+
+  let insertLine = 0;
+  let insertText = '';
+
+  if (propsBlock) {
+    insertLine = propsBlock.insertLine;
+    insertText = `${propLine}${eol}`;
+  } else {
+    insertLine = findInsertLineForNewPropsBlock(document);
+    insertText = `props${eol}${propLine}${eol}${eol}`;
+  }
+
+  const { position, prefix } = getInsertPosition(document, insertLine);
+  const edit = new WorkspaceEdit();
+  edit.insert(document.uri, position, `${prefix}${insertText}`);
+
+  const action = new CodeAction(`Add "${propName}" to props block`, CodeActionKind.QuickFix);
+  action.edit = edit;
+  action.diagnostics = [diagnostic];
+  return action;
+}
 
 class CollieIdCodeActionProvider implements CodeActionProvider {
   provideCodeActions(document: TextDocument, range: Range): CodeAction[] {
@@ -107,6 +305,34 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
       };
       openHtmlAction.diagnostics = [diagnostic];
       actions.push(openHtmlAction);
+    }
+
+    // Compiler-provided fixes and props actions
+    const actionableDiagnostics = diagnostics.filter(diag => diag.range.intersection(range));
+    for (const diagnostic of actionableDiagnostics) {
+      const data = diagnostic.data as DiagnosticData | undefined;
+      if (!data) {
+        continue;
+      }
+
+      if (data.fix) {
+        actions.push(buildApplyFixAction(document, diagnostic, data.fix));
+
+        if (data.kind === 'dialectToken') {
+          actions.push(buildDialectFixAction(document, diagnostic, data.fix));
+        }
+
+        if (data.kind === 'removePropDeclaration') {
+          actions.push(buildRemovePropAction(document, diagnostic, data.fix));
+        }
+      }
+
+      if (data.kind === 'addPropDeclaration' && data.propName) {
+        const action = buildAddPropDeclarationAction(document, diagnostic, data.propName);
+        if (action) {
+          actions.push(action);
+        }
+      }
     }
     
     return actions;

@@ -39,6 +39,7 @@ import './navigation/definitionProvider';
 import './navigation/htmlToCollieDefinitionProvider';
 import './navigation/commands';
 import './diagnostics/provider';
+import './diagnostics/codeActions';
 import './hover/provider';
 import './completions/provider';
 import './completions/htmlCollieIdProvider';
