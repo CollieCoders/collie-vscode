@@ -44,5 +44,6 @@ import './completions/provider';
 import './completions/htmlCollieIdProvider';
 import './symbols/workspaceSymbolProvider';
 import './lang/cacheWatcher';
+import './config/discovery';
 import './customization/commands';
 import './conversion/commands';
