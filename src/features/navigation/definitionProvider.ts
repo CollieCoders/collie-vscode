@@ -7,6 +7,8 @@ import type { SourceSpan } from '../../format/parser/diagnostics';
 import { getParsedDocument } from '../../lang/cache';
 import { findHtmlAnchorsByLogicalId } from '../../lang/navigation';
 import { isFeatureFlagEnabled } from '../featureFlags';
+import { resolveCollieConfigForDocument } from '../../config/collieConfig';
+import { getCssClassIndexForDocument } from '../css/indexer';
 
 const COMPONENT_EXTENSIONS = ['.collie', '.tsx'] as const;
 const CACHE_TTL_MS = 5000;
@@ -31,6 +33,90 @@ function spanContains(span: SourceSpan | undefined, offset: number): boolean {
     return false;
   }
   return offset >= span.start.offset && offset < span.end.offset;
+}
+
+interface ClassReference {
+  classes: string[];
+  span: SourceSpan;
+}
+
+function buildAliasMap(parsed: ReturnType<typeof getParsedDocument>): Map<string, string[]> {
+  const aliases = parsed.ast.classAliases?.aliases ?? [];
+  const map = new Map<string, string[]>();
+  for (const alias of aliases) {
+    map.set(alias.name, alias.classes);
+  }
+  return map;
+}
+
+function findClassReference(
+  parsed: ReturnType<typeof getParsedDocument>,
+  offset: number
+): ClassReference | null {
+  const aliasMap = buildAliasMap(parsed);
+
+  const visitNode = (node: Node): ClassReference | null => {
+    if (node.type === 'Element') {
+      const spans = node.classSpans ?? [];
+      for (let index = 0; index < node.classes.length; index++) {
+        const span = spans[index];
+        if (!span || !spanContains(span, offset)) {
+          continue;
+        }
+        const token = node.classes[index];
+        const aliasMatch = token.match(/^\$([A-Za-z_][A-Za-z0-9_]*)$/);
+        if (aliasMatch) {
+          const aliasName = aliasMatch[1];
+          const expanded = aliasMap.get(aliasName);
+          if (!expanded) {
+            return null;
+          }
+          return { classes: expanded, span };
+        }
+        return { classes: [token], span };
+      }
+
+      for (const child of node.children) {
+        const match = visitNode(child);
+        if (match) {
+          return match;
+        }
+      }
+      return null;
+    }
+
+    if (node.type === 'Conditional') {
+      for (const branch of node.branches) {
+        for (const child of branch.body) {
+          const match = visitNode(child);
+          if (match) {
+            return match;
+          }
+        }
+      }
+      return null;
+    }
+
+    if (node.type === 'ForLoop') {
+      for (const child of node.body) {
+        const match = visitNode(child);
+        if (match) {
+          return match;
+        }
+      }
+    }
+
+    return null;
+  };
+
+  for (const child of parsed.ast.children) {
+    const match = visitNode(child);
+    if (match) {
+      return match;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -161,10 +247,36 @@ async function provideDefinition(document: TextDocument, position: Position, con
     if (idDefinition) {
       return idDefinition;
     }
-    
-    // Otherwise, handle component references (existing behavior)
     const parsed = getParsedDocument(document);
     const offset = document.offsetAt(position);
+
+    const config = await resolveCollieConfigForDocument(document, context.logger);
+    if (config.flags.enableCssIndex) {
+      const classRef = findClassReference(parsed, offset);
+      if (classRef) {
+        const index = getCssClassIndexForDocument(document);
+        if (index) {
+          const locations: Location[] = [];
+          const seen = new Set<string>();
+          for (const className of classRef.classes) {
+            const definitions = index.getDefinitions(className);
+            for (const def of definitions) {
+              const key = `${def.uri.toString()}:${def.range.start.line}:${def.range.start.character}:${def.range.end.line}:${def.range.end.character}`;
+              if (seen.has(key)) {
+                continue;
+              }
+              seen.add(key);
+              locations.push(new Location(def.uri, def.range));
+            }
+          }
+          if (locations.length > 0) {
+            return locations;
+          }
+        }
+      }
+    }
+    
+    // Otherwise, handle component references (existing behavior)
     const targetNode = findComponentNode(parsed.ast.children, offset);
     if (!targetNode) {
       return undefined;

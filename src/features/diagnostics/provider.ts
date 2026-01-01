@@ -18,6 +18,8 @@ import { isFeatureFlagEnabled, onDidChangeFeatureFlags } from '../featureFlags';
 import * as path from 'path';
 import { collectCompilerDiagnostics } from './compilerDiagnostics';
 import { onDidChangeCollieConfig, resolveCollieConfigForDocument } from '../../config/collieConfig';
+import { getCssClassIndexForDocument } from '../css/indexer';
+import type { Node } from '../../format/parser/ast';
 
 const SUPPORTED_DIRECTIVES = new Set(['@if', '@elseIf', '@else', '@for']);
 const DIALECT_DIRECTIVE_ALIASES = new Set(['@elseif', '@else-if']);
@@ -258,6 +260,124 @@ function collectMissingHtmlPlaceholderDiagnostics(document: TextDocument, parsed
   return diagnostics;
 }
 
+function mapUnknownClassSeverity(setting?: string): DiagnosticSeverity {
+  const normalized = setting?.toLowerCase();
+  switch (normalized) {
+    case 'error':
+      return DiagnosticSeverity.Error;
+    case 'info':
+    case 'hint':
+      return DiagnosticSeverity.Information;
+    case 'warn':
+    case 'warning':
+    default:
+      return DiagnosticSeverity.Warning;
+  }
+}
+
+function buildClassAliasMap(parsed: ParsedDocument): Map<string, string[]> {
+  const aliases = parsed.ast.classAliases?.aliases ?? [];
+  const map = new Map<string, string[]>();
+  for (const alias of aliases) {
+    map.set(alias.name, alias.classes);
+  }
+  return map;
+}
+
+function collectUnknownClassDiagnostics(
+  document: TextDocument,
+  parsed: ParsedDocument | null,
+  config: Awaited<ReturnType<typeof resolveCollieConfigForDocument>>
+): VSDiagnostic[] {
+  if (!parsed || !config.flags.enableUnknownClassDiagnostics) {
+    return [];
+  }
+
+  const index = getCssClassIndexForDocument(document);
+  if (!index) {
+    return [];
+  }
+
+  const aliasMap = buildClassAliasMap(parsed);
+  const diagnostics: VSDiagnostic[] = [];
+  const emitted = new Set<string>();
+  const severity = mapUnknownClassSeverity(config.parsed.cssUnknownClass);
+
+  const pushDiagnostic = (className: string, span?: SourceSpan, aliasName?: string) => {
+    if (!span) {
+      return;
+    }
+    const key = `${className}:${span.start.offset}`;
+    if (emitted.has(key)) {
+      return;
+    }
+    emitted.add(key);
+    const range = spanToRange(document, span);
+    const suffix = aliasName ? ` (from $${aliasName})` : '';
+    const diagnostic = new VSDiagnostic(
+      range,
+      `Unknown CSS class "${className}"${suffix}.`,
+      severity
+    );
+    diagnostic.code = 'COLLIE405';
+    diagnostic.source = 'collie';
+    diagnostics.push(diagnostic);
+  };
+
+  const visitNode = (node: Node) => {
+    if (node.type === 'Element') {
+      const spans = node.classSpans ?? [];
+      node.classes.forEach((token, indexPos) => {
+        const span = spans[indexPos] ?? node.span;
+        const aliasMatch = token.match(/^\$([A-Za-z_][A-Za-z0-9_]*)$/);
+        if (aliasMatch) {
+          const aliasName = aliasMatch[1];
+          const expanded = aliasMap.get(aliasName);
+          if (!expanded) {
+            return;
+          }
+          for (const className of expanded) {
+            if (!index.hasClass(className)) {
+              pushDiagnostic(className, span, aliasName);
+            }
+          }
+          return;
+        }
+
+        if (!index.hasClass(token)) {
+          pushDiagnostic(token, span);
+        }
+      });
+
+      for (const child of node.children) {
+        visitNode(child);
+      }
+      return;
+    }
+
+    if (node.type === 'Conditional') {
+      for (const branch of node.branches) {
+        for (const child of branch.body) {
+          visitNode(child);
+        }
+      }
+      return;
+    }
+
+    if (node.type === 'ForLoop') {
+      for (const child of node.body) {
+        visitNode(child);
+      }
+    }
+  };
+
+  for (const child of parsed.ast.children) {
+    visitNode(child);
+  }
+
+  return diagnostics;
+}
+
 function createDiagnostic(range: Range, message: string, code: string): VSDiagnostic {
   const diagnostic = new VSDiagnostic(range, message, DiagnosticSeverity.Error);
   diagnostic.code = code;
@@ -298,6 +418,7 @@ async function applyDiagnostics(
   diagnostics.push(...collectUnknownDirectiveDiagnostics(document));
   diagnostics.push(...collectDuplicatePropDiagnostics(document));
   diagnostics.push(...collectCompilerDiagnostics(document, parsed, config));
+  diagnostics.push(...collectUnknownClassDiagnostics(document, parsed, config));
 
   collection.set(document.uri, diagnostics);
 }
