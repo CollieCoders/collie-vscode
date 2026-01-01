@@ -107,6 +107,11 @@
           "enum": ["inherit", "on", "off"],
           "default": "inherit",
           "description": "Override unknown class diagnostics from Collie config (inherit/on/off)."
+        },
+        "collie.props.reactIntegration.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable experimental React integration diagnostics for Collie props."
         }
       }
     },

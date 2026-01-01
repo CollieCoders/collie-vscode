@@ -40,6 +40,7 @@ import './navigation/htmlToCollieDefinitionProvider';
 import './navigation/commands';
 import './diagnostics/provider';
 import './diagnostics/codeActions';
+import './diagnostics/tsPropsDiagnostics';
 import './hover/provider';
 import './completions/provider';
 import './completions/htmlCollieIdProvider';

@@ -16,6 +16,7 @@ export interface CollieConfigParsed {
   cssUnknownClass?: string;
   dialect?: string;
   dialectProps?: unknown;
+  propsReactIntegrationEnabled?: boolean;
 }
 
 export interface CollieConfigFlags {
@@ -131,6 +132,18 @@ function extractConfigFields(rawConfig: unknown): CollieConfigParsed {
     }
     if ('props' in dialectConfig) {
       parsed.dialectProps = dialectConfig.props;
+    }
+  }
+
+  const props = config.props;
+  if (props && typeof props === 'object') {
+    const propsConfig = props as Record<string, unknown>;
+    const reactIntegration = propsConfig.reactIntegration;
+    if (reactIntegration && typeof reactIntegration === 'object') {
+      const reactConfig = reactIntegration as Record<string, unknown>;
+      if (typeof reactConfig.enabled === 'boolean') {
+        parsed.propsReactIntegrationEnabled = reactConfig.enabled;
+      }
     }
   }
 
