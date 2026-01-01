@@ -47,5 +47,6 @@ import './symbols/workspaceSymbolProvider';
 import './lang/cacheWatcher';
 import './config/discovery';
 import './css/indexer';
+import './css/commands';
 import './customization/commands';
 import './conversion/commands';

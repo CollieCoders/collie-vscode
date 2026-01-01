@@ -4,6 +4,7 @@ import {
   Uri,
   window,
   workspace,
+  type ConfigurationChangeEvent,
   type TextDocument,
   type WorkspaceFolder
 } from 'vscode';
@@ -54,6 +55,13 @@ class WorkspaceCssIndex {
     }
 
     this.startWatching();
+  }
+
+  async rebuild(): Promise<void> {
+    if (!this.enabled) {
+      return;
+    }
+    await this.index.buildIndex();
   }
 
   disable(): void {
@@ -126,6 +134,7 @@ class WorkspaceCssIndex {
 }
 
 const workspaceIndexes = new Map<string, WorkspaceCssIndex>();
+const UNKNOWN_CLASS_OVERRIDE_KEY = 'css.diagnostics.unknownClassOverride';
 
 function isCollieDocument(document: TextDocument): boolean {
   return document.languageId === 'collie';
@@ -149,31 +158,59 @@ function isCssDocument(document: TextDocument): boolean {
   return true;
 }
 
-async function shouldEnableCssIndex(folder: WorkspaceFolder, context: FeatureContext): Promise<boolean> {
+export function getUnknownClassOverrideSetting(): 'inherit' | 'on' | 'off' {
+  const config = workspace.getConfiguration('collie');
+  const value = config.get<string>(UNKNOWN_CLASS_OVERRIDE_KEY, 'inherit');
+  if (value === 'on' || value === 'off') {
+    return value;
+  }
+  return 'inherit';
+}
+
+type CssIndexDecision = {
+  enable: boolean;
+  reason: 'enabled' | 'no-collie-doc' | 'tailwind' | 'disabled' | 'override-off';
+};
+
+async function shouldEnableCssIndex(folder: WorkspaceFolder, context: FeatureContext): Promise<CssIndexDecision> {
   const collieDocs = workspace.textDocuments.filter(
     doc => isCollieDocument(doc) && workspace.getWorkspaceFolder(doc.uri)?.uri.fsPath === folder.uri.fsPath
   );
 
   if (collieDocs.length === 0) {
-    return false;
+    return { enable: false, reason: 'no-collie-doc' };
   }
+
+  const override = getUnknownClassOverrideSetting();
+  if (override === 'off') {
+    return { enable: false, reason: 'override-off' };
+  }
+
+  let sawTailwind = false;
 
   for (const document of collieDocs) {
     const config = await resolveCollieConfigForDocument(document, context.logger);
+    if (config.flags.isTailwind) {
+      sawTailwind = true;
+      continue;
+    }
     if (config.flags.enableCssIndex) {
-      return true;
+      return { enable: true, reason: 'enabled' };
+    }
+    if (override === 'on' && config.flags.isGlobal) {
+      return { enable: true, reason: 'enabled' };
     }
   }
 
-  return false;
+  return { enable: false, reason: sawTailwind ? 'tailwind' : 'disabled' };
 }
 
 async function refreshWorkspaceIndex(folder: WorkspaceFolder, context: FeatureContext): Promise<void> {
-  const enable = await shouldEnableCssIndex(folder, context);
+  const decision = await shouldEnableCssIndex(folder, context);
   const key = folder.uri.fsPath;
   const existing = workspaceIndexes.get(key);
 
-  if (enable) {
+  if (decision.enable) {
     const entry = existing ?? new WorkspaceCssIndex(folder, context);
     if (!existing) {
       workspaceIndexes.set(key, entry);
@@ -183,6 +220,13 @@ async function refreshWorkspaceIndex(folder: WorkspaceFolder, context: FeatureCo
   }
 
   existing?.disable();
+  if (decision.reason === 'tailwind') {
+    context.logger.info(`CSS index disabled for ${folder.name} (Tailwind strategy).`);
+  } else if (decision.reason === 'override-off') {
+    context.logger.info(`CSS index disabled for ${folder.name} (override off).`);
+  } else if (decision.reason === 'disabled') {
+    context.logger.info(`CSS index disabled for ${folder.name} (config).`);
+  }
 }
 
 function removeWorkspaceIndex(folder: WorkspaceFolder): void {
@@ -200,6 +244,27 @@ export function getCssClassIndexForDocument(document: TextDocument): CssClassInd
     return undefined;
   }
   return workspaceIndexes.get(folderKey)?.getIndex();
+}
+
+export async function rebuildCssClassIndexForWorkspace(folder: WorkspaceFolder): Promise<boolean> {
+  const entry = workspaceIndexes.get(folder.uri.fsPath);
+  if (!entry) {
+    return false;
+  }
+  await entry.rebuild();
+  return true;
+}
+
+export async function ensureCssIndexForWorkspace(
+  folder: WorkspaceFolder,
+  context: FeatureContext
+): Promise<boolean> {
+  await refreshWorkspaceIndex(folder, context);
+  return rebuildCssClassIndexForWorkspace(folder);
+}
+
+function affectsUnknownClassOverride(event: ConfigurationChangeEvent): boolean {
+  return event.affectsConfiguration(`collie.${UNKNOWN_CLASS_OVERRIDE_KEY}`);
 }
 
 function activateCssIndex(context: FeatureContext) {
@@ -266,6 +331,14 @@ function activateCssIndex(context: FeatureContext) {
   context.register(
     onDidChangeCollieConfig(() => {
       refreshAll();
+    })
+  );
+
+  context.register(
+    workspace.onDidChangeConfiguration(event => {
+      if (affectsUnknownClassOverride(event)) {
+        refreshAll();
+      }
     })
   );
 

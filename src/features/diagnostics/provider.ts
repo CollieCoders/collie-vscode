@@ -18,7 +18,7 @@ import { isFeatureFlagEnabled, onDidChangeFeatureFlags } from '../featureFlags';
 import * as path from 'path';
 import { collectCompilerDiagnostics } from './compilerDiagnostics';
 import { onDidChangeCollieConfig, resolveCollieConfigForDocument } from '../../config/collieConfig';
-import { getCssClassIndexForDocument } from '../css/indexer';
+import { getCssClassIndexForDocument, getUnknownClassOverrideSetting } from '../css/indexer';
 import type { Node } from '../../format/parser/ast';
 
 const SUPPORTED_DIRECTIVES = new Set(['@if', '@elseIf', '@else', '@for']);
@@ -289,12 +289,25 @@ function collectUnknownClassDiagnostics(
   parsed: ParsedDocument | null,
   config: Awaited<ReturnType<typeof resolveCollieConfigForDocument>>
 ): VSDiagnostic[] {
-  if (!parsed || !config.flags.enableUnknownClassDiagnostics) {
+  const override = getUnknownClassOverrideSetting();
+  if (override === 'off') {
+    return [];
+  }
+
+  if (!parsed) {
     return [];
   }
 
   const index = getCssClassIndexForDocument(document);
   if (!index) {
+    return [];
+  }
+
+  if (config.flags.isTailwind) {
+    return [];
+  }
+
+  if (override !== 'on' && !config.flags.enableUnknownClassDiagnostics) {
     return [];
   }
 
@@ -521,6 +534,14 @@ function activateDiagnosticsProvider(context: FeatureContext) {
   context.register(
     onDidChangeCollieConfig(() => {
       refreshOpenDocuments(collection, context);
+    })
+  );
+
+  context.register(
+    workspace.onDidChangeConfiguration(event => {
+      if (event.affectsConfiguration('collie.css.diagnostics.unknownClassOverride')) {
+        refreshOpenDocuments(collection, context);
+      }
     })
   );
   

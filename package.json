@@ -101,6 +101,12 @@
           "type": "boolean",
           "default": true,
           "description": "Normalize props declarations to use a single space after the colon."
+        },
+        "collie.css.diagnostics.unknownClassOverride": {
+          "type": "string",
+          "enum": ["inherit", "on", "off"],
+          "default": "inherit",
+          "description": "Override unknown class diagnostics from Collie config (inherit/on/off)."
         }
       }
     },
@@ -161,6 +167,21 @@
         "command": "collie.openCompiledHtmlPartial",
         "title": "Collie: Open Compiled HTML Partial",
         "description": "Open the compiled HTML partial (collie/dist/<id>.html) for the active Collie template.",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.rebuildCssIndex",
+        "title": "Collie: Rebuild CSS Index",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.showCurrentConfig",
+        "title": "Collie: Show Current Config (for this file)",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.toggleUnknownClassDiagnostics",
+        "title": "Collie: Toggle CSS Unknown Class Diagnostics",
         "category": "Collie"
       }
     ],
