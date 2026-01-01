@@ -16,8 +16,11 @@ import type { ParsedDocument } from '../../lang';
 import type { Diagnostic as ParserDiagnostic, SourceSpan } from '../../format/parser/diagnostics';
 import { isFeatureFlagEnabled, onDidChangeFeatureFlags } from '../featureFlags';
 import * as path from 'path';
+import { collectCompilerDiagnostics } from './compilerDiagnostics';
+import { onDidChangeCollieConfig, resolveCollieConfigForDocument } from '../../config/collieConfig';
 
 const SUPPORTED_DIRECTIVES = new Set(['@if', '@elseIf', '@else', '@for']);
+const DIALECT_DIRECTIVE_ALIASES = new Set(['@elseif', '@else-if']);
 const DIAGNOSTIC_DEBOUNCE_MS = 200;
 const pendingDiagnostics = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -136,7 +139,7 @@ function collectUnknownDirectiveDiagnostics(document: TextDocument): VSDiagnosti
     }
 
     const directive = `@${match[1]}`;
-    if (SUPPORTED_DIRECTIVES.has(directive)) {
+    if (SUPPORTED_DIRECTIVES.has(directive) || DIALECT_DIRECTIVE_ALIASES.has(directive)) {
       continue;
     }
 
@@ -262,7 +265,7 @@ function createDiagnostic(range: Range, message: string, code: string): VSDiagno
   return diagnostic;
 }
 
-function applyDiagnostics(
+async function applyDiagnostics(
   document: TextDocument,
   collection: ReturnType<typeof languages.createDiagnosticCollection>,
   context: FeatureContext
@@ -284,6 +287,7 @@ function applyDiagnostics(
   }
 
   const diagnostics: VSDiagnostic[] = [];
+  const config = await resolveCollieConfigForDocument(document, context.logger);
 
   if (parsed) {
     diagnostics.push(...collectParserDiagnostics(document, parsed));
@@ -293,6 +297,7 @@ function applyDiagnostics(
 
   diagnostics.push(...collectUnknownDirectiveDiagnostics(document));
   diagnostics.push(...collectDuplicatePropDiagnostics(document));
+  diagnostics.push(...collectCompilerDiagnostics(document, parsed, config));
 
   collection.set(document.uri, diagnostics);
 }
@@ -309,7 +314,7 @@ function scheduleDiagnostics(
   }
   const handle = setTimeout(() => {
     pendingDiagnostics.delete(key);
-    applyDiagnostics(document, collection, context);
+    void applyDiagnostics(document, collection, context);
     // After updating this document, refresh all other collie documents
     // to update their ID collision diagnostics
     refreshOtherCollieDocuments(document, collection, context);
@@ -325,7 +330,7 @@ function refreshOtherCollieDocuments(
   const changedUri = changedDocument.uri.toString();
   for (const document of workspace.textDocuments) {
     if (document.languageId === 'collie' && document.uri.toString() !== changedUri) {
-      applyDiagnostics(document, collection, context);
+      void applyDiagnostics(document, collection, context);
     }
   }
 }
@@ -344,7 +349,7 @@ function refreshOpenDocuments(
   context: FeatureContext
 ) {
   for (const document of workspace.textDocuments) {
-    applyDiagnostics(document, collection, context);
+    void applyDiagnostics(document, collection, context);
   }
 }
 
@@ -358,13 +363,19 @@ function activateDiagnosticsProvider(context: FeatureContext) {
 
   context.register(
     workspace.onDidOpenTextDocument(document => {
-      applyDiagnostics(document, collection, context);
+      void applyDiagnostics(document, collection, context);
     })
   );
 
   context.register(
     workspace.onDidChangeTextDocument(event => {
       scheduleDiagnostics(event.document, collection, context);
+    })
+  );
+
+  context.register(
+    workspace.onDidSaveTextDocument(document => {
+      scheduleDiagnostics(document, collection, context);
     })
   );
 
@@ -383,6 +394,12 @@ function activateDiagnosticsProvider(context: FeatureContext) {
       } else {
         collection.clear();
       }
+    })
+  );
+
+  context.register(
+    onDidChangeCollieConfig(() => {
+      refreshOpenDocuments(collection, context);
     })
   );
   
