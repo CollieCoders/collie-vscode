@@ -46,5 +46,6 @@ import './completions/htmlCollieIdProvider';
 import './symbols/workspaceSymbolProvider';
 import './lang/cacheWatcher';
 import './config/discovery';
+import './css/indexer';
 import './customization/commands';
 import './conversion/commands';
