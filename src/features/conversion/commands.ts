@@ -2,6 +2,9 @@ import { commands } from 'vscode';
 import type { FeatureContext } from '..';
 import { registerFeature } from '..';
 
+// Alias commands exist only to provide short context-menu titles.
+// They forward to the canonical implementations.
+
 const CONVERT_TSX_SELECTION_CMD = 'collie.convertTsxSelectionToCollie';
 const CONVERT_TSX_SELECTION_MENU_CMD = 'collie.convertToCollie';
 const COPY_AS_JSX_CMD = 'collie.copyAsJsx';

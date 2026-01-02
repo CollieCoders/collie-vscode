@@ -2,7 +2,7 @@
   "name": "collie-vscode",
   "displayName": "Collie",
   "description": "VS Code language support for Collie templates",
-  "version": "0.5.3",
+  "version": "0.6.3",
   "publisher": "collie",
   "license": "MIT",
   "repository": "https://github.com/collie-lang/collie-vscode",
@@ -14,14 +14,12 @@
     "Programming Languages"
   ],
   "main": "./dist/extension.cjs",
-  "activationEvents": [
-    "onLanguage:collie",
-    "onCommand:collie.convertTsxSelectionToCollie",
-    "onCommand:collie.copyAsJsx",
-    "onCommand:collie.copyAsTsx",
-    "onCommand:collie.convertToCollie",
-    "onCommand:collie.convertToTsxClipboard"
-  ],
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "package": "vsce package",
+    "lint": "tsc --noEmit"
+  },
   "contributes": {
     "languages": [
       {
@@ -66,22 +64,22 @@
         "collie.features.diagnostics": {
           "type": "boolean",
           "default": true,
-          "description": "Enable experimental Collie diagnostics (Problems panel integration)."
+          "description": "Enable Collie diagnostics (Problems panel integration)."
         },
         "collie.features.completions": {
           "type": "boolean",
           "default": true,
-          "description": "Enable experimental Collie completions (directives, tags, components)."
+          "description": "Enable Collie completions (directives, tags, components)."
         },
         "collie.features.navigation": {
           "type": "boolean",
           "default": true,
-          "description": "Enable experimental Collie navigation features (Go to Definition, symbols)."
+          "description": "Enable Collie navigation features (Go to Definition, symbols)."
         },
         "collie.features.hover": {
           "type": "boolean",
           "default": true,
-          "description": "Enable experimental Collie hover info (directives, props, expressions)."
+          "description": "Enable Collie hover info (directives, props, expressions)."
         },
         "collie.format.indentSize": {
           "type": "number",
@@ -106,7 +104,11 @@
         },
         "collie.css.diagnostics.unknownClassOverride": {
           "type": "string",
-          "enum": ["inherit", "on", "off"],
+          "enum": [
+            "inherit",
+            "on",
+            "off"
+          ],
           "default": "inherit",
           "description": "Override unknown class diagnostics from Collie config (inherit/on/off)."
         },
@@ -114,6 +116,22 @@
           "type": "boolean",
           "default": false,
           "description": "Enable experimental React integration diagnostics for Collie props."
+        },
+        "collie.warnings.missingConfig.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a one-time warning when no `collie.config.*` is found in the workspace."
+        },
+        "collie.warnings.missingPackages.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a one-time warning when required `@collie-lang/*` packages appear to be missing."
+        },
+        "collie.warnings.throttleMinutes": {
+          "type": "number",
+          "default": 1440,
+          "minimum": 1,
+          "description": "Minimum minutes between repeated warning notifications per workspace (default: 1 day)."
         }
       }
     },
@@ -173,11 +191,13 @@
       {
         "command": "collie.convertToCollie",
         "title": "Convert to Collie",
+        "description": "Convert the selected JSX/TSX into a new `.collie` file.",
         "category": "Collie"
       },
       {
         "command": "collie.convertToTsxClipboard",
         "title": "Convert to TSX (Copy to Clipboard)",
+        "description": "Convert the active Collie document into TSX and copy it to the clipboard.",
         "category": "Collie"
       },
       {
@@ -206,22 +226,22 @@
       "editor/context": [
         {
           "command": "collie.convertToCollie",
-          "when": "editorHasSelection && (editorLangId == typescriptreact || editorLangId == javascriptreact)",
+          "when": "editorHasSelection && (editorLangId == 'typescriptreact' || editorLangId == 'javascriptreact')",
           "group": "navigation@10"
         },
         {
           "command": "collie.convertToTsxClipboard",
-          "when": "editorLangId == collie",
+          "when": "editorLangId == 'collie'",
           "group": "navigation@11"
         },
         {
           "command": "collie.customizeTokenColor",
-          "when": "editorLangId == collie",
+          "when": "editorLangId == 'collie'",
           "group": "navigation@99"
         },
         {
           "command": "collie.resetTokenCustomization",
-          "when": "editorLangId == collie",
+          "when": "editorLangId == 'collie'",
           "group": "navigation@100"
         }
       ],
@@ -258,12 +278,6 @@
         }
       }
     }
-  },
-  "scripts": {
-    "build": "node esbuild.config.mjs",
-    "watch": "node esbuild.config.mjs --watch",
-    "package": "vsce package",
-    "lint": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

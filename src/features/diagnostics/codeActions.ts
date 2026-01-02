@@ -83,7 +83,7 @@ function hasPropDeclarationInBlock(
   propsBlock: { line: number; indent: number; insertLine: number },
   propName: string
 ): boolean {
-  const propPattern = new RegExp(`^${escapeRegExp(propName)}\\??\\s*:`); 
+  const propPattern = new RegExp(`^${escapeRegExp(propName)}\\??\\s*:`);
   for (let i = propsBlock.line + 1; i < document.lineCount; i++) {
     const line = document.lineAt(i);
     const trimmed = line.text.trim();
@@ -248,7 +248,7 @@ function collectFixEdits(document: TextDocument, diagnostics: Diagnostic[]): Dia
   const fixes: Array<DiagnosticFix & { startOffset: number; endOffset: number }> = [];
 
   for (const diagnostic of diagnostics) {
-    const data = diagnostic.data as DiagnosticData | undefined;
+    const data = diagnostic as DiagnosticData | undefined;
     if (!data?.fix) {
       continue;
     }
@@ -276,24 +276,24 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
   provideCodeActions(document: TextDocument, range: Range): CodeAction[] {
     const actions: CodeAction[] = [];
     const diagnostics = languages.getDiagnostics(document.uri);
-    
+
     // Find ID collision diagnostics
-    const collisionDiagnostics = diagnostics.filter(diag => 
+    const collisionDiagnostics = diagnostics.filter(diag =>
       diag.code === 'COLLIE403' && diag.range.intersection(range)
     );
-    
+
     for (const diagnostic of collisionDiagnostics) {
       // Extract the template ID from the diagnostic message
       const match = diagnostic.message.match(/Duplicate Collie template id "([^"]+)"/);
       if (!match) {
         continue;
       }
-      
+
       const templateId = match[1];
       const entries = getTemplateIdEntries(templateId);
       const currentUri = document.uri.toString();
       const others = entries.filter(entry => entry.uri.toString() !== currentUri);
-      
+
       // Action 1: Rename ID in this file
       const renameAction = new CodeAction(
         'Rename ID in this file...',
@@ -306,7 +306,7 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
       };
       renameAction.diagnostics = [diagnostic];
       actions.push(renameAction);
-      
+
       // Action 2: Open conflicting templates
       if (others.length > 0) {
         const openAction = new CodeAction(
@@ -322,22 +322,22 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
         actions.push(openAction);
       }
     }
-    
+
     // Find missing HTML placeholder diagnostics
-    const placeholderDiagnostics = diagnostics.filter(diag => 
+    const placeholderDiagnostics = diagnostics.filter(diag =>
       diag.code === 'COLLIE404' && diag.range.intersection(range)
     );
-    
+
     for (const diagnostic of placeholderDiagnostics) {
       // Extract the template ID from the diagnostic message
       const match = diagnostic.message.match(/Template id "([^"]+)" has no matching HTML placeholder/);
       if (!match) {
         continue;
       }
-      
+
       const templateId = match[1];
       const placeholderId = `${templateId}-collie`;
-      
+
       // Action 1: Search workspace for the placeholder ID
       const searchAction = new CodeAction(
         `Search workspace for "${placeholderId}"`,
@@ -350,7 +350,7 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
       };
       searchAction.diagnostics = [diagnostic];
       actions.push(searchAction);
-      
+
       // Action 2: Open HTML files in workspace
       const openHtmlAction = new CodeAction(
         'Open HTML files in workspace',
@@ -367,7 +367,7 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
     // Compiler-provided fixes and props actions
     const actionableDiagnostics = diagnostics.filter(diag => diag.range.intersection(range));
     for (const diagnostic of actionableDiagnostics) {
-      const data = diagnostic.data as DiagnosticData | undefined;
+      const data = diagnostic as DiagnosticData | undefined;
       if (!data) {
         continue;
     }
@@ -400,14 +400,14 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
     if (fixAll) {
       actions.push(fixAll);
     }
-    
+
     return actions;
   }
 }
 
 function activateIdCodeActions(context: FeatureContext) {
   const provider = new CollieIdCodeActionProvider();
-  
+
   context.register(
     languages.registerCodeActionsProvider(
       { language: 'collie' },
@@ -415,7 +415,7 @@ function activateIdCodeActions(context: FeatureContext) {
       { providedCodeActionKinds: [CodeActionKind.QuickFix, CodeActionKind.SourceFixAll] }
     )
   );
-  
+
   // Register the rename command
   context.register(
     commands.registerCommand(
@@ -434,17 +434,17 @@ function activateIdCodeActions(context: FeatureContext) {
             return null;
           }
         });
-        
+
         if (!newId) {
           return;
         }
-        
+
         const edit = new WorkspaceEdit();
-        
+
         // Check if there's an explicit ID directive
         const firstLine = document.lineAt(0);
         const idDirectiveMatch = /^(#?id)(?:\s+|:\s*|=\s*)(.+)$/i.exec(firstLine.text.trim());
-        
+
         if (idDirectiveMatch) {
           // Replace existing ID directive value
           const valueStart = firstLine.text.indexOf(idDirectiveMatch[2]);
@@ -459,12 +459,12 @@ function activateIdCodeActions(context: FeatureContext) {
           // Insert new ID directive at the top
           edit.insert(document.uri, document.positionAt(0), `#id ${newId}\n\n`);
         }
-        
+
         await workspace.applyEdit(edit);
       }
     )
   );
-  
+
   // Register the open conflicting templates command
   context.register(
     commands.registerCommand(
@@ -476,26 +476,26 @@ function activateIdCodeActions(context: FeatureContext) {
       }
     )
   );
-  
+
   // Register the open workspace HTML files command
   context.register(
     commands.registerCommand(
       'collie.openWorkspaceHtmlFiles',
       async () => {
         const htmlFiles = await workspace.findFiles('**/*.html', '**/node_modules/**', 10);
-        
+
         if (htmlFiles.length === 0) {
           window.showInformationMessage('No HTML files found in workspace.');
           return;
         }
-        
+
         for (const uri of htmlFiles) {
           await window.showTextDocument(uri, { preview: false });
         }
       }
     )
   );
-  
+
   context.logger.info('Collie ID code actions registered.');
 }
 
