@@ -1,6 +1,7 @@
 import { build, context } from 'esbuild';
 
 const isWatch = process.argv.includes('--watch');
+const isProd = !isWatch;
 
 const config = {
   entryPoints: ['src/extension.ts'],
@@ -8,8 +9,16 @@ const config = {
   outfile: 'dist/extension.cjs',
   platform: 'node',
   format: 'cjs',
-  sourcemap: true,
+  target: 'node18',
   external: ['vscode'],
+  treeShaking: true,
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(isProd ? 'production' : 'development')
+  },
+  sourcemap: isWatch ? 'inline' : false,
+  sourcesContent: isWatch,
+  minify: isProd,
+  legalComments: 'none',
   logLevel: 'info'
 };
 
