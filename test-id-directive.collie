@@ -1,9 +1,0 @@
-#id homeHero
-
-props
-  title: string
-  subtitle: string
-
-div.hero
-  h1 {{ title }}
-  p.subtitle {{ subtitle }}

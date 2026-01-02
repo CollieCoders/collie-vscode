@@ -1,7 +1,0 @@
-#id homeHero
-
-props
-  title: string
-
-div.hero
-  h1 {{ title }}

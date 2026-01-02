@@ -18,15 +18,15 @@ interface Segment {
   end: number;
 }
 
-const directivePattern = /@(if|elseIf|else)\b/g;
-const forLoopPattern = /@for\s+([A-Za-z_][\w]*)\s+in\s+([A-Za-z_][\w.[\]]*)/g;
+const directivePattern = /^@(if|elseIf|else)\b/g;
+const forLoopPattern = /^@for\s+([A-Za-z_][\w]*)\s+in\s+([A-Za-z_][\w.[\]]*)/g;
 const classShorthandPattern = /\.(?:\$[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][\w-]*)/g;
 const singleBracePattern = /(?<!\{)\{(?!\{).*?(?<!\})\}(?!\})/g;
 const interpolationPattern = /\{\{.*?\}\}/g;
 const idDirectivePattern = /^(\s*)(#?id)(?:\s+|:\s*|=\s*)(.+)$/i;
 const propsKeywordPattern = /^(\s*)(props)\b/;
-const propsFieldPattern = /^(\s*)([A-Za-z_][\w-]*)(\??)\s*:/;
-const tagPattern = /^(\s*)([A-Za-z][\w-]*)/;
+const propsFieldPattern = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:/;
+const tagPattern = /^(\s*)([A-Za-z][A-Za-z0-9_$]*)/;
 const pipeTextPattern = /^(\s*)\|/;
 const classesKeywordPattern = /^(\s*)(classes)\b/;
 const classAliasLinePattern = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*=/;
@@ -82,8 +82,9 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
     pipeTextPattern.lastIndex = 0;
     if (pipeMatch) {
       const start = pipeMatch[1].length;
-      const length = lineText.length - start;
-      if (!overlaps(commentSegments, start, length)) {
+      let length = lineText.length - start;
+      length = clipTokenLength(commentSegments, start, length);
+      if (length > 0 && !overlaps(commentSegments, start, length)) {
         pushToken(tokens, {
           line,
           startCharacter: start,
@@ -117,11 +118,19 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
       const valueStartInMatch = fullMatch.indexOf(valuePart);
       if (valueStartInMatch !== -1) {
         const valueStart = valueStartInMatch;
-        if (!overlaps(commentSegments, valueStart, valuePart.length)) {
+        let valueLength = valuePart.length;
+        valueLength = clipTokenLength(commentSegments, valueStart, valueLength);
+        if (valueLength > 0 && !overlaps(commentSegments, valueStart, valueLength)) {
+          const trimmedValue = lineText
+            .slice(valueStart, valueStart + valueLength)
+            .trimEnd();
+          valueLength = trimmedValue.length;
+        }
+        if (valueLength > 0 && !overlaps(commentSegments, valueStart, valueLength)) {
           pushToken(tokens, {
             line,
             startCharacter: valueStart,
-            length: valuePart.length,
+            length: valueLength,
             type: 'collieIdValue'
           });
         }
@@ -213,11 +222,13 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
       }
     }
 
+    const lineBody = lineText.slice(indent);
+
     // @for loops
     forLoopPattern.lastIndex = 0;
     let forMatch: RegExpExecArray | null;
-    while ((forMatch = forLoopPattern.exec(lineText))) {
-      const start = forMatch.index;
+    while ((forMatch = forLoopPattern.exec(lineBody))) {
+      const start = indent + forMatch.index;
       const length = forMatch[0].length;
       if (!overlaps(commentSegments, start, length)) {
         pushToken(tokens, {
@@ -232,8 +243,8 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
     // Directives
     directivePattern.lastIndex = 0;
     let directiveMatch: RegExpExecArray | null;
-    while ((directiveMatch = directivePattern.exec(lineText))) {
-      const start = directiveMatch.index;
+    while ((directiveMatch = directivePattern.exec(lineBody))) {
+      const start = indent + directiveMatch.index;
       const length = directiveMatch[0].length;
       if (!overlaps(commentSegments, start, length)) {
         pushToken(tokens, {
@@ -397,6 +408,26 @@ function overlaps(segments: Segment[], start: number, length: number): boolean {
   }
   const end = start + length;
   return segments.some(segment => start < segment.end && end > segment.start);
+}
+
+function clipTokenLength(segments: Segment[], start: number, length: number): number {
+  if (length <= 0) {
+    return 0;
+  }
+  const end = start + length;
+  for (const segment of segments) {
+    if (segment.end <= start) {
+      continue;
+    }
+    if (segment.start <= start) {
+      return 0;
+    }
+    if (segment.start < end) {
+      return Math.max(0, segment.start - start);
+    }
+    break;
+  }
+  return length;
 }
 
 function pushToken(tokens: CollieSemanticToken[], token: CollieSemanticToken) {
