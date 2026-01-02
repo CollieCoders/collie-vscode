@@ -36,30 +36,11 @@ Formatter already exists and is strong.
 
 ## Stage 0 — Demo Wiring Audit & Manual Checklist
 
-**% Complete:** 0% (update after stage)
+**% Complete:** 100%
 
-### Goals
-- Add a short demo checklist and define the “demo snippet constraints” (self-contained selection).
-- Confirm command IDs + where they are registered.
+Refer to `docs/demo-checklist.md`.
 
-### Action Items
-1. Add `docs/demo-checklist.md` with:
-   - Open Vite project
-   - Select JSX in TSX file
-   - Convert to Collie
-   - Edit `.collie`, format, introduce invalid `#id`, quick fix, copy as TSX
-2. Verify existing command IDs used by the extension:
-   - `collie.convertTsxSelectionToCollie`
-   - `collie.copyAsTsx`
-   - (optional) `collie.copyAsJsx`
-3. Identify language id and extension association for `.collie`:
-   - ensure `collie` language id exists in `package.json`
-
-### Expected Behavior
-- No runtime changes yet.
-
-### Notes
-- If any command ID naming mismatches exist between `package.json` and code, document it.
+**NOTE**: Command IDs and titles must match `package.json`. Treat `package.json` as authoritative.
 
 ---
 
