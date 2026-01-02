@@ -24,6 +24,8 @@ import type { Node } from '../../format/parser/ast';
 const SUPPORTED_DIRECTIVES = new Set(['@if', '@elseIf', '@else', '@for']);
 const DIALECT_DIRECTIVE_ALIASES = new Set(['@elseif', '@else-if']);
 const DIAGNOSTIC_DEBOUNCE_MS = 200;
+const ID_DIRECTIVE_PATTERN = /^(?:#|)id(?:\s+|:\s*|=\s*)(.+)$/i;
+const PASCAL_CASE_PATTERN = /^[A-Z][A-Za-z0-9]*$/;
 const pendingDiagnostics = new Map<string, ReturnType<typeof setTimeout>>();
 
 function shouldHandleDocument(document: TextDocument): boolean {
@@ -72,6 +74,63 @@ function collectParserDiagnostics(document: TextDocument, parsed: ParsedDocument
     return [];
   }
   return parsed.diagnostics.map(diag => convertParserDiagnostic(document, diag));
+}
+
+function collectPascalCaseIdDiagnostics(document: TextDocument, parsed: ParsedDocument): VSDiagnostic[] {
+  const rawId = parsed.ast.rawId?.trim();
+  if (!rawId || !parsed.ast.idSpan) {
+    return [];
+  }
+
+  const normalized = rawId.endsWith('-collie') ? rawId.slice(0, -7) : rawId;
+  if (PASCAL_CASE_PATTERN.test(normalized)) {
+    return [];
+  }
+
+  const range = getIdValueRange(document, parsed.ast.idSpan, rawId);
+  const replacementText = toPascalCase(normalized);
+  const diagnostic = new VSDiagnostic(
+    range,
+    'Collie template id must be PascalCase.',
+    DiagnosticSeverity.Error
+  );
+  diagnostic.code = 'COLLIE410';
+  diagnostic.source = 'collie';
+  diagnostic.data = {
+    kind: 'pascalCaseId',
+    fix: {
+      range,
+      replacementText
+    }
+  };
+  return [diagnostic];
+}
+
+function getIdValueRange(document: TextDocument, span: SourceSpan, rawId: string): Range {
+  const lineIndex = Math.max(0, span.start.line - 1);
+  const lineText = document.lineAt(lineIndex).text;
+  const match = ID_DIRECTIVE_PATTERN.exec(lineText);
+  if (!match || match.index === undefined) {
+    return spanToRange(document, span);
+  }
+
+  const valueText = match[1];
+  const valueIndex = match[0].lastIndexOf(valueText);
+  if (valueIndex === -1) {
+    return spanToRange(document, span);
+  }
+
+  const start = match.index + valueIndex;
+  return new Range(lineIndex, start, lineIndex, start + rawId.length);
+}
+
+function toPascalCase(value: string): string {
+  const tokens = value.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  const combined = tokens.map(token => token[0].toUpperCase() + token.slice(1)).join('');
+  if (!combined) {
+    return 'CollieId';
+  }
+  return /^[A-Za-z_]/.test(combined) ? combined : `Collie${combined}`;
 }
 
 function collectDuplicatePropDiagnostics(document: TextDocument): VSDiagnostic[] {
@@ -424,6 +483,7 @@ async function applyDiagnostics(
 
   if (parsed) {
     diagnostics.push(...collectParserDiagnostics(document, parsed));
+    diagnostics.push(...collectPascalCaseIdDiagnostics(document, parsed));
     diagnostics.push(...collectIdCollisionDiagnostics(document, parsed));
     diagnostics.push(...collectMissingHtmlPlaceholderDiagnostics(document, parsed));
   }

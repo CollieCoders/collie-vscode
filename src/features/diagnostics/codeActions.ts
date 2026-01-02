@@ -180,6 +180,19 @@ function buildRemovePropAction(
   return action;
 }
 
+function buildPascalCaseIdAction(
+  document: TextDocument,
+  diagnostic: Diagnostic,
+  fix: DiagnosticFix
+): CodeAction {
+  const action = new CodeAction('Convert to PascalCase', CodeActionKind.QuickFix);
+  const edit = new WorkspaceEdit();
+  edit.replace(document.uri, fix.range, fix.replacementText);
+  action.edit = edit;
+  action.diagnostics = [diagnostic];
+  return action;
+}
+
 function buildAddPropDeclarationAction(
   document: TextDocument,
   diagnostic: Diagnostic,
@@ -310,17 +323,21 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
     // Compiler-provided fixes and props actions
     const actionableDiagnostics = diagnostics.filter(diag => diag.range.intersection(range));
     for (const diagnostic of actionableDiagnostics) {
-      const data = diagnostic.data as DiagnosticData | undefined;
-      if (!data) {
-        continue;
+    const data = diagnostic.data as DiagnosticData | undefined;
+    if (!data) {
+      continue;
+    }
+
+    if (data.fix) {
+      if (data.kind === 'pascalCaseId') {
+        actions.push(buildPascalCaseIdAction(document, diagnostic, data.fix));
+      } else {
+        actions.push(buildApplyFixAction(document, diagnostic, data.fix));
       }
 
-      if (data.fix) {
-        actions.push(buildApplyFixAction(document, diagnostic, data.fix));
-
-        if (data.kind === 'dialectToken') {
-          actions.push(buildDialectFixAction(document, diagnostic, data.fix));
-        }
+      if (data.kind === 'dialectToken') {
+        actions.push(buildDialectFixAction(document, diagnostic, data.fix));
+      }
 
         if (data.kind === 'removePropDeclaration') {
           actions.push(buildRemovePropAction(document, diagnostic, data.fix));
