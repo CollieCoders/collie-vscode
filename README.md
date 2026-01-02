@@ -256,6 +256,19 @@ When enabled, Collie will:
 * Surface parser diagnostics in the **Problems** panel
 * Highlight invalid or unsupported constructs inline
 
+Current diagnostics include:
+
+* Parser errors/warnings from the Collie grammar
+* Unknown directives and dialect spellings like `@else-if`
+* Duplicate prop declarations
+* PascalCase `#id` enforcement, duplicate template IDs, and missing HTML placeholders
+* Props used but not declared in the `#props` block
+* Unknown CSS classes when a CSS index is available (respects `collie.css.diagnostics.unknownClassOverride`)
+* Optional React integration diagnostics when `collie.props.reactIntegration.enabled` is enabled
+
+Quick fixes are available for several diagnostics (dialect token normalization, PascalCase `#id`, add missing
+props, “Fix all Collie issues”, and ID/HTML placeholder helpers).
+
 Diagnostics are deliberately throttled to avoid blocking your typing and are driven by the same parser used for formatting and other features.
 
 ---
@@ -280,6 +293,11 @@ Collie navigation currently includes:
   * Sibling `.tsx` files
   * Matching names in the same or sibling directories
     and jump to the matching component when found.
+
+* **Open Compiled HTML Partial**
+  Use `Collie: Open Compiled HTML Partial` to open `collie/dist/<id>.html` under the workspace root.
+  The `<id>` comes from an explicit `#id` directive, or (if missing) from the `.collie` filename with a
+  trailing `-collie` suffix removed.
 
 The definition provider uses simple, predictable heuristics and a short-lived cache so it stays responsive even in larger projects.
 
@@ -326,17 +344,19 @@ Workflow:
 1. In a `*.tsx` or `*.jsx` file, select the JSX you want to convert
 
    * Multi-node selections are supported; the extension wraps them into a temporary root.
-2. Run the command from the Command Palette.
+2. Run the command from the Command Palette, or use the editor context menu action **Convert to Collie**
+   (only shown when a JSX/TSX selection exists).
 3. The extension:
 
    * Parses the JSX selection with TypeScript
    * Converts it to an intermediate representation
    * Prints Collie output
    * Logs details to the **“Collie Conversion”** output channel
-4. You’ll be prompted to:
-
-   * Create a `.collie` file next to the source component, **or**
-   * Open the generated Collie snippet in an untitled editor for review
+4. The extension tries to create a `.collie` file next to the source component (using a PascalCase name
+   derived from the TSX filename or parent folder for `index`) and prepends `#id <ComponentName>` if missing.
+5. When a file is created, the original TSX selection is replaced with `<ComponentName />`,
+   and an import is inserted if needed.
+6. If a file can’t be created, the output is copied to your clipboard and opened in a preview editor instead.
 
 Unsupported constructs are never silently dropped; any issues are surfaced as warnings in the output channel.
 
@@ -389,6 +409,11 @@ All settings are namespaced under `collie.*`.
 | `collie.format.preferCompactSelectors` | `true`  | Print selectors like `div.foo.bar` instead of inserting spaces before class shorthands.          |
 | `collie.format.spaceAroundPipe`        | `true`  | Insert a space between the pipe symbol and inline/standalone text.                               |
 | `collie.format.normalizePropsSpacing`  | `true`  | Normalize props declarations to a single space after the colon.                                  |
+| `collie.css.diagnostics.unknownClassOverride` | `inherit` | Override unknown class diagnostics from Collie config (`inherit`/`on`/`off`).              |
+| `collie.props.reactIntegration.enabled` | `false` | Enable experimental React integration diagnostics for Collie props.                              |
+| `collie.warnings.missingConfig.enabled` | `true` | Show a one-time warning when no `collie.config.*` is found in the workspace.                     |
+| `collie.warnings.missingPackages.enabled` | `true` | Show a one-time warning when required `@collie-lang/*` packages appear to be missing.           |
+| `collie.warnings.throttleMinutes`      | `1440` | Minimum minutes between repeated warning notifications per workspace (default: 1 day).          |
 
 You can also group the feature flags under a single object in `settings.json`:
 
@@ -407,7 +432,8 @@ You can also group the feature flags under a single object in `settings.json`:
 
 ## Commands
 
-All commands are available via the **Command Palette** (`Ctrl+Shift+P` / `Cmd+Shift+P`) under “Collie: …”.
+All canonical commands are available via the **Command Palette** (`Ctrl+Shift+P` / `Cmd+Shift+P`) under
+“Collie: …”. Some short context-menu aliases (like “Convert to Collie”) are hidden from the palette.
 
 **Customization**
 
@@ -425,11 +451,25 @@ These commands help you tweak semantic token colors and styles. They:
 * Prompt you for a color and style (bold/italic/underline)
 * Write the customization to the appropriate settings target (user/workspace)
 
-**Conversion**
+**Conversion & Export**
 
 * `Collie: Convert JSX/TSX Selection to Collie`
 * `Collie: Copy as JSX`
 * `Collie: Copy as TSX`
+
+**Navigation & CSS**
+
+* `Collie: Open Compiled HTML Partial`
+* `Collie: Rebuild CSS Index`
+* `Collie: Show Current Config (for this file)`
+* `Collie: Toggle CSS Unknown Class Diagnostics`
+
+**Context menu shortcuts (editor right-click)**
+
+* `Convert to Collie` (only when a JSX/TSX selection exists)
+* `Convert to TSX (Copy to Clipboard)` (only in `.collie` files)
+* `Customize Token Color` (only in `.collie` files)
+* `Reset Token Customization` (only in `.collie` files)
 
 ---
 
@@ -465,3 +505,20 @@ Issues, ideas, and bug reports are very welcome.
   TODO: Add link to the main Collie language docs / discussion forum / Discord here.
 
 If you’re using Collie in a real project, feedback on what worked well and what didn’t will heavily influence how this extension evolves.
+
+---
+
+## Accuracy Notes
+
+Planned features referenced above:
+
+* Range/selection formatting
+* Smarter formatter behaviors
+* Richer diagnostics and quick fixes
+* Deeper navigation/completion smarts
+* Possible evolution toward a shared language server
+* Optional conversion delivery choices and extra conversion polish (Demo MVP notes)
+
+Assumptions made while updating this README:
+
+* The optional conversion delivery flow (prompting vs preview) is still intended post-MVP, based on the prior README wording.
