@@ -1,7 +1,6 @@
 import type { SemanticTokens, TextDocument, CancellationToken } from 'vscode';
 import { languages, SemanticTokensBuilder, workspace } from 'vscode';
 import type { FeatureContext } from '..';
-import { registerFeature } from '..';
 import { collieSemanticTokensLegend } from './legend';
 import { tokenizeCollieSemanticTokens } from './tokenize';
 import type { CollieSemanticToken } from './tokenize';
@@ -69,7 +68,7 @@ function buildRangeTokens(tokens: CollieSemanticToken[], startLine: number, endL
   return builder.build();
 }
 
-async function registerCollieSemanticTokens(context: FeatureContext) {
+export async function registerSemanticTokensProvider(context: FeatureContext) {
   const provider = languages.registerDocumentSemanticTokensProvider(
     { language: 'collie' },
     {
@@ -120,5 +119,3 @@ async function registerCollieSemanticTokens(context: FeatureContext) {
   context.register(closeListener);
   context.logger.info('Collie semantic tokens provider registered.');
 }
-
-registerFeature(registerCollieSemanticTokens);

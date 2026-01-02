@@ -1,9 +1,8 @@
 import { workspace } from 'vscode';
 import type { FeatureContext } from '..';
-import { registerFeature } from '..';
 import { clearParsedDocuments, invalidateParsedDocument } from '../../lang/cache';
 
-function activateCacheWatcher(context: FeatureContext) {
+export function registerLangCacheWatcher(context: FeatureContext) {
   context.register(
     workspace.onDidCloseTextDocument(document => {
       if (document.languageId === 'collie') {
@@ -38,5 +37,3 @@ function activateCacheWatcher(context: FeatureContext) {
 
   context.logger.info('Collie language cache watcher registered.');
 }
-
-registerFeature(activateCacheWatcher);

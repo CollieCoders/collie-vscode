@@ -10,7 +10,6 @@ import {
   type WorkspaceFolder
 } from 'vscode';
 import type { FeatureContext } from '..';
-import { registerFeature } from '..';
 import { getParsedDocument } from '../../lang/cache';
 import { onDidChangeCollieConfig, resolveCollieConfigForDocument } from '../../config/collieConfig';
 import * as path from 'path';
@@ -316,7 +315,7 @@ function refreshOpenDocuments(
   }
 }
 
-function activateReactPropsDiagnostics(context: FeatureContext) {
+export function registerTsPropsDiagnostics(context: FeatureContext) {
   const collection = languages.createDiagnosticCollection(COLLECTION_NAME);
   context.register(collection);
 
@@ -379,5 +378,3 @@ function activateReactPropsDiagnostics(context: FeatureContext) {
 
   context.logger.info('React props diagnostics registered.');
 }
-
-registerFeature(activateReactPropsDiagnostics);

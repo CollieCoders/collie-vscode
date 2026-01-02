@@ -1,6 +1,5 @@
 import { commands, window, workspace, ConfigurationTarget, type TextDocument, type WorkspaceFolder } from 'vscode';
 import type { FeatureContext } from '..';
-import { registerFeature } from '..';
 import { resolveCollieConfigForDocument } from '../../config/collieConfig';
 import {
   getUnknownClassOverrideSetting,
@@ -76,7 +75,7 @@ async function toggleUnknownClassDiagnostics(): Promise<void> {
   window.showInformationMessage(`Unknown class diagnostics override set to "${next}".`);
 }
 
-function activateCssCommands(context: FeatureContext) {
+export function registerCssCommands(context: FeatureContext) {
   context.register(
     commands.registerCommand('collie.rebuildCssIndex', () => rebuildCssIndex(context))
   );
@@ -91,5 +90,3 @@ function activateCssCommands(context: FeatureContext) {
 
   context.logger.info('Collie CSS commands registered.');
 }
-
-registerFeature(activateCssCommands);

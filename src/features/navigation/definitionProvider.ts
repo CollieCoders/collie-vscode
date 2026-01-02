@@ -1,7 +1,6 @@
 import { dirname, join } from 'path';
 import { FileType, Location, Position, Range, Uri, languages, TextDocument, workspace, type DefinitionLink } from 'vscode';
 import type { FeatureContext } from '..';
-import { registerFeature } from '..';
 import type { ElementNode, Node } from '../../format/parser/ast';
 import type { SourceSpan } from '../../format/parser/diagnostics';
 import { getParsedDocument } from '../../lang/cache';
@@ -131,27 +130,27 @@ async function provideIdDirectiveDefinition(
   try {
     const parsed = getParsedDocument(document);
     const offset = document.offsetAt(position);
-    
+
     // Check if cursor is on the ID directive value
     if (!parsed.ast.idSpan || !spanContains(parsed.ast.idSpan, offset)) {
       return undefined;
     }
-    
+
     // Get the logical ID
     const logicalId = parsed.ast.id;
     if (!logicalId) {
       return undefined;
     }
-    
+
     // Find HTML anchors for this template ID
     const htmlAnchors = findHtmlAnchorsByLogicalId(logicalId);
     if (htmlAnchors.length === 0) {
       return undefined;
     }
-    
+
     // Create definition links for each HTML anchor
     const definitionLinks: DefinitionLink[] = [];
-    
+
     for (const anchor of htmlAnchors) {
       for (const range of anchor.ranges) {
         definitionLinks.push({
@@ -161,7 +160,7 @@ async function provideIdDirectiveDefinition(
         });
       }
     }
-    
+
     return definitionLinks.length > 0 ? definitionLinks : undefined;
   } catch (error) {
     context.logger.error('ID directive definition provider failed.', error);
@@ -275,7 +274,7 @@ async function provideDefinition(document: TextDocument, position: Position, con
         }
       }
     }
-    
+
     // Otherwise, handle component references (existing behavior)
     const targetNode = findComponentNode(parsed.ast.children, offset);
     if (!targetNode) {
@@ -294,7 +293,7 @@ async function provideDefinition(document: TextDocument, position: Position, con
   }
 }
 
-function activateDefinitionFeature(context: FeatureContext) {
+export function registerDefinitionProvider(context: FeatureContext) {
   const provider = languages.registerDefinitionProvider({ language: 'collie' }, {
     provideDefinition(document, position) {
       return provideDefinition(document, position, context);
@@ -327,5 +326,3 @@ function activateDefinitionFeature(context: FeatureContext) {
   );
   context.logger.info('Collie definition provider registered.');
 }
-
-registerFeature(activateDefinitionFeature);

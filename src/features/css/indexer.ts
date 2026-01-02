@@ -9,7 +9,6 @@ import {
   type WorkspaceFolder
 } from 'vscode';
 import type { FeatureContext } from '..';
-import { registerFeature } from '..';
 import { onDidChangeCollieConfig, resolveCollieConfigForDocument } from '../../config/collieConfig';
 import { CssClassIndex, getCssIncludeGlob, isExcludedCssPath, isSupportedCssFile } from './classIndex';
 
@@ -267,7 +266,7 @@ function affectsUnknownClassOverride(event: ConfigurationChangeEvent): boolean {
   return event.affectsConfiguration(`collie.${UNKNOWN_CLASS_OVERRIDE_KEY}`);
 }
 
-function activateCssIndex(context: FeatureContext) {
+export function registerCssIndexer(context: FeatureContext) {
   const refreshAll = () => {
     for (const folder of workspace.workspaceFolders ?? []) {
       void refreshWorkspaceIndex(folder, context);
@@ -357,5 +356,3 @@ function activateCssIndex(context: FeatureContext) {
 
   context.logger.info('Collie CSS class indexer registered.');
 }
-
-registerFeature(activateCssIndex);

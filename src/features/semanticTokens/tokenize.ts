@@ -102,7 +102,7 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
       const indentLength = idDirectiveMatch[1].length;
       const keywordPart = idDirectiveMatch[2];
       const valuePart = idDirectiveMatch[3].trim();
-      
+
       // Tokenize keyword (#id, id, ID, etc.)
       if (!overlaps(commentSegments, indentLength, keywordPart.length)) {
         pushToken(tokens, {
@@ -112,7 +112,7 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
           type: 'collieIdKeyword'
         });
       }
-      
+
       // Find the start of the value (after keyword and separator)
       const fullMatch = idDirectiveMatch[0];
       const valueStartInMatch = fullMatch.indexOf(valuePart);

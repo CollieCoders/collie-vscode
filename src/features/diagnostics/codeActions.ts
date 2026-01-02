@@ -10,14 +10,11 @@ import {
   WorkspaceEdit,
   commands,
   window,
-  workspace,
-  Uri
+  workspace
 } from 'vscode';
 import type { Diagnostic } from 'vscode';
 import type { FeatureContext } from '..';
-import { registerFeature } from '..';
 import { getTemplateIdEntries } from '../../lang/cache';
-// import * as path from 'path';
 
 const ID_DIRECTIVE_PATTERN = /^(?:#|)id(?:\s+|:\s*|=\s*)(.+)$/i;
 const DEFAULT_PROP_TYPE = 'unknown';
@@ -405,7 +402,7 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
   }
 }
 
-function activateIdCodeActions(context: FeatureContext) {
+export function registerDiagnosticsCodeActions(context: FeatureContext) {
   const provider = new CollieIdCodeActionProvider();
 
   context.register(
@@ -498,5 +495,3 @@ function activateIdCodeActions(context: FeatureContext) {
 
   context.logger.info('Collie ID code actions registered.');
 }
-
-registerFeature(activateIdCodeActions);

@@ -1,7 +1,6 @@
 import { basename } from 'path';
 import { DocumentSymbol, languages, Range, SymbolKind, TextDocument } from 'vscode';
 import type { FeatureContext } from '..';
-import { registerFeature } from '..';
 import type { ElementNode, Node, ConditionalNode, ConditionalBranch, ForLoopNode, PropsDecl } from '../../format/parser/ast';
 import type { SourceSpan } from '../../format/parser/diagnostics';
 import { getParsedDocument } from '../../lang/cache';
@@ -139,7 +138,7 @@ function buildDocumentSymbols(document: TextDocument): DocumentSymbol[] {
   return createDocumentRootSymbol(document, children);
 }
 
-function activateDocumentSymbolsFeature(context: FeatureContext) {
+export function registerDocumentSymbols(context: FeatureContext) {
   const provider = languages.registerDocumentSymbolProvider({ language: 'collie' }, {
     provideDocumentSymbols(document) {
       if (!isFeatureFlagEnabled('navigation')) {
@@ -158,5 +157,3 @@ function activateDocumentSymbolsFeature(context: FeatureContext) {
   context.register(provider);
   context.logger.info('Collie document symbols provider registered.');
 }
-
-registerFeature(activateDocumentSymbolsFeature);

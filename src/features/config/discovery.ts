@@ -1,6 +1,5 @@
 import { window, workspace, type TextDocument, type Uri } from 'vscode';
 import type { FeatureContext } from '..';
-import { registerFeature } from '..';
 import {
   clearCollieConfigCache,
   invalidateCollieConfigForUri,
@@ -23,7 +22,7 @@ async function handleCollieDocument(document: TextDocument, context: FeatureCont
   await warnIfMissingConfig(document, context, resolved.configPath);
 }
 
-function activateConfigDiscovery(context: FeatureContext) {
+export function registerConfigDiscovery(context: FeatureContext) {
   let watcherInitialized = false;
 
   const ensureWatcher = () => {
@@ -85,5 +84,3 @@ function activateConfigDiscovery(context: FeatureContext) {
 
   context.logger.info('Collie config discovery registered.');
 }
-
-registerFeature(activateConfigDiscovery);
