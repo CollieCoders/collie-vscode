@@ -10,6 +10,7 @@ import { JsxParseError, parseJsxSelection } from '../../convert/tsx/parseSelecti
 
 const SUPPORTED_LANGUAGE_IDS = new Set(['typescriptreact', 'javascriptreact']);
 const OUTPUT_CHANNEL_NAME = 'Collie Conversion';
+const DEFAULT_COMPONENT_NAME = 'CollieSelection';
 
 interface SelectionContext {
   readonly document: TextDocument;
@@ -31,6 +32,11 @@ function getSelectionContext(): SelectionContext | undefined {
 
   if (selection.isEmpty) {
     window.showErrorMessage('Select JSX before running Collie conversion.');
+    return undefined;
+  }
+
+  if (document.isUntitled || document.uri.scheme !== 'file') {
+    window.showErrorMessage('Save the file before running Collie conversion.');
     return undefined;
   }
 
@@ -149,54 +155,29 @@ async function deliverCollieOutput(document: TextDocument, collieText: string) {
     return;
   }
 
-  const action = await window.showInformationMessage(
-    'Collie conversion ready. Create a .collie file or copy to clipboard?',
-    'Create File',
-    'Copy to Clipboard'
-  );
-
-  if (!action) {
-    return;
+  const created = await createCollieFile(document, collieText);
+  if (!created) {
+    await copyCollieToClipboard(collieText);
   }
-
-  if (action === 'Create File') {
-    await promptCreateCollieFile(document, collieText);
-    return;
-  }
-
-  await copyCollieToClipboard(collieText);
 }
 
-async function promptCreateCollieFile(document: TextDocument, collieText: string) {
-  const suggestedUri = suggestCollieFileUri(document);
-  const targetUri = await window.showSaveDialog({
-    defaultUri: suggestedUri,
-    filters: { Collie: ['collie'] },
-    saveLabel: 'Create Collie File'
-  });
-
-  if (!targetUri) {
-    return;
+async function createCollieFile(document: TextDocument, collieText: string): Promise<boolean> {
+  const suggested = suggestCollieFileUri(document);
+  if (!suggested) {
+    window.showWarningMessage('Unable to determine where to create the Collie file.');
+    return false;
   }
 
-  const exists = await fileExists(targetUri);
-  if (exists) {
-    const overwrite = await window.showWarningMessage(
-      `${targetUri.fsPath} already exists. Overwrite?`,
-      { modal: true },
-      'Overwrite'
-    );
-    if (overwrite !== 'Overwrite') {
-      window.showInformationMessage('Did not create Collie file.');
-      return;
-    }
-  }
+  const componentName = deriveComponentName(document);
+  const targetUri = await findAvailableCollieFileUri(suggested, componentName);
+  const finalContents = buildCollieFileContents(collieText, componentName);
 
   const encoder = new TextEncoder();
-  await workspace.fs.writeFile(targetUri, encoder.encode(collieText));
+  await workspace.fs.writeFile(targetUri, encoder.encode(finalContents));
   const doc = await workspace.openTextDocument(targetUri);
   await window.showTextDocument(doc);
-  window.showInformationMessage(`Created ${targetUri.fsPath}`);
+  window.showInformationMessage(`Created ${basename(targetUri.fsPath)} and opened it.`);
+  return true;
 }
 
 async function copyCollieToClipboard(collieText: string) {
@@ -216,9 +197,7 @@ function suggestCollieFileUri(document: TextDocument): Uri | undefined {
 
   const fsPath = document.uri.fsPath;
   const dir = dirname(fsPath);
-  const base = basename(fsPath, extname(fsPath));
-  const finalName = base && base.toLowerCase() !== 'index' ? base : 'CollieSelection';
-  return Uri.file(join(dir, `${finalName}.collie`));
+  return Uri.file(join(dir, `${DEFAULT_COMPONENT_NAME}.collie`));
 }
 
 async function fileExists(uri: Uri): Promise<boolean> {
@@ -228,4 +207,52 @@ async function fileExists(uri: Uri): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function findAvailableCollieFileUri(baseUri: Uri, componentName: string): Promise<Uri> {
+  const dir = dirname(baseUri.fsPath);
+  let index = 0;
+  while (true) {
+    const suffix = index === 0 ? '' : `-${index}`;
+    const candidate = Uri.file(join(dir, `${componentName}${suffix}.collie`));
+    if (!(await fileExists(candidate))) {
+      return candidate;
+    }
+    index += 1;
+  }
+}
+
+function deriveComponentName(document: TextDocument): string {
+  if (document.uri.scheme !== 'file') {
+    return DEFAULT_COMPONENT_NAME;
+  }
+
+  const fsPath = document.uri.fsPath;
+  const base = basename(fsPath, extname(fsPath));
+  let raw = base;
+  if (!raw || raw.toLowerCase() === 'index') {
+    raw = basename(dirname(fsPath));
+  }
+
+  return toPascalCase(raw || DEFAULT_COMPONENT_NAME);
+}
+
+function toPascalCase(value: string): string {
+  const tokens = value.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  const combined =
+    tokens.map(token => token[0].toUpperCase() + token.slice(1)).join('') || DEFAULT_COMPONENT_NAME;
+  return /^[A-Za-z_]/.test(combined) ? combined : `Collie${combined}`;
+}
+
+function buildCollieFileContents(collieText: string, componentName: string): string {
+  const trimmed = collieText.trimEnd();
+  const hasIdDirective = /^\s*#id\b/im.test(trimmed);
+  if (hasIdDirective) {
+    return trimmed.length ? `${trimmed}\n` : trimmed;
+  }
+  const header = `#id ${componentName}\n\n`;
+  if (!trimmed) {
+    return header;
+  }
+  return `${header}${trimmed}\n`;
 }
