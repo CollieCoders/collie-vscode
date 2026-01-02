@@ -58,7 +58,7 @@ const configPathToCacheKeys = new Map<string, Set<string>>();
 const configChangeEmitter = new EventEmitter<CollieConfigChange>();
 export const onDidChangeCollieConfig = configChangeEmitter.event;
 
-const require = createRequire(import.meta.url);
+const require = createRequire(__filename);
 
 function createDefaultFlags(): CollieConfigFlags {
   return {
