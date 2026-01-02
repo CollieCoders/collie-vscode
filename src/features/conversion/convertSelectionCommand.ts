@@ -1,7 +1,17 @@
 import * as ts from 'typescript';
-import { basename, dirname, extname, join } from 'path';
+import { basename, dirname, extname, join, relative } from 'path';
 import { TextEncoder } from 'util';
-import { env, Uri, window, workspace, type OutputChannel, type TextDocument } from 'vscode';
+import {
+  env,
+  Uri,
+  window,
+  workspace,
+  type OutputChannel,
+  type TextDocument,
+  Range,
+  WorkspaceEdit,
+  EndOfLine
+} from 'vscode';
 import type { FeatureContext } from '..';
 import type { IrNode } from '../../convert/ir/nodes';
 import { printCollieDocument } from '../../convert/collie/print';
@@ -15,6 +25,7 @@ const DEFAULT_COMPONENT_NAME = 'CollieSelection';
 interface SelectionContext {
   readonly document: TextDocument;
   readonly text: string;
+  readonly selection: Range;
 }
 
 function getSelectionContext(): SelectionContext | undefined {
@@ -42,7 +53,8 @@ function getSelectionContext(): SelectionContext | undefined {
 
   return {
     document,
-    text: document.getText(selection)
+    text: document.getText(selection),
+    selection
   };
 }
 
@@ -69,20 +81,31 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
     const parseResult = parseJsxSelection(selection.text);
     const conversion = convertJsxNodesToIr(parseResult.rootNodes, parseResult.sourceFile);
     const collieText = printCollieDocument(conversion.nodes);
+    const warnings = conversion.diagnostics.warnings;
     logSelection(
       selection.text,
       parseResult.rootNodes,
       parseResult.sourceFile,
       conversion.nodes,
       collieText,
-      conversion.diagnostics.warnings,
+      warnings,
       channel
     );
-    await deliverCollieOutput(selection.document, collieText);
-    if (conversion.diagnostics.warnings.length > 0) {
-      window.showWarningMessage('JSX parsed with warnings. See the Collie Conversion output for details.');
-    } else {
-      window.showInformationMessage('Parsed JSX selection. See the Collie Conversion output for details.');
+    const created = await deliverCollieOutput(selection.document, collieText);
+    if (created) {
+      const applied = await applyTsxEdits(selection, created.componentName, created.uri);
+      const filename = basename(created.uri.fsPath);
+      if (applied) {
+        if (warnings.length > 0) {
+          window.showWarningMessage(
+            `Created ${filename} and replaced selection. JSX parsed with warnings; see the Collie Conversion output.`
+          );
+        } else {
+          window.showInformationMessage(`Created ${filename} and replaced selection.`);
+        }
+      } else {
+        window.showWarningMessage(`Created ${filename} but could not update the TSX selection.`);
+      }
     }
   } catch (error) {
     if (error instanceof JsxParseError) {
@@ -149,35 +172,48 @@ function summarizeNodeText(node: ts.JsxChild, sourceFile: ts.SourceFile) {
   return raw.length > maxLength ? `${raw.slice(0, maxLength - 1)}…` : raw;
 }
 
-async function deliverCollieOutput(document: TextDocument, collieText: string) {
+interface CollieCreationResult {
+  uri: Uri;
+  componentName: string;
+}
+
+async function deliverCollieOutput(
+  document: TextDocument,
+  collieText: string
+): Promise<CollieCreationResult | null> {
   if (!collieText.trim()) {
     window.showWarningMessage('Collie conversion produced empty output. Nothing to deliver.');
-    return;
+    return null;
   }
 
   const created = await createCollieFile(document, collieText);
   if (!created) {
     await copyCollieToClipboard(collieText);
+    return null;
   }
+  return created;
 }
 
-async function createCollieFile(document: TextDocument, collieText: string): Promise<boolean> {
+async function createCollieFile(
+  document: TextDocument,
+  collieText: string
+): Promise<CollieCreationResult | null> {
   const suggested = suggestCollieFileUri(document);
   if (!suggested) {
     window.showWarningMessage('Unable to determine where to create the Collie file.');
-    return false;
+    return null;
   }
 
-  const componentName = deriveComponentName(document);
-  const targetUri = await findAvailableCollieFileUri(suggested, componentName);
+  const baseName = deriveComponentName(document);
+  const targetUri = await findAvailableCollieFileUri(suggested, baseName);
+  const componentName = deriveComponentNameFromUri(targetUri);
   const finalContents = buildCollieFileContents(collieText, componentName);
 
   const encoder = new TextEncoder();
   await workspace.fs.writeFile(targetUri, encoder.encode(finalContents));
   const doc = await workspace.openTextDocument(targetUri);
   await window.showTextDocument(doc);
-  window.showInformationMessage(`Created ${basename(targetUri.fsPath)} and opened it.`);
-  return true;
+  return { uri: targetUri, componentName };
 }
 
 async function copyCollieToClipboard(collieText: string) {
@@ -237,6 +273,14 @@ function deriveComponentName(document: TextDocument): string {
   return toPascalCase(raw || DEFAULT_COMPONENT_NAME);
 }
 
+function deriveComponentNameFromUri(uri: Uri): string {
+  if (uri.scheme !== 'file') {
+    return DEFAULT_COMPONENT_NAME;
+  }
+  const base = basename(uri.fsPath, '.collie');
+  return toPascalCase(base || DEFAULT_COMPONENT_NAME);
+}
+
 function toPascalCase(value: string): string {
   const tokens = value.split(/[^A-Za-z0-9]+/).filter(Boolean);
   const combined =
@@ -255,4 +299,114 @@ function buildCollieFileContents(collieText: string, componentName: string): str
     return header;
   }
   return `${header}${trimmed}\n`;
+}
+
+async function applyTsxEdits(
+  selection: SelectionContext,
+  componentName: string,
+  collieUri: Uri
+): Promise<boolean> {
+  const document = selection.document;
+  const importPath = buildRelativeImportPath(document, collieUri);
+  const sourceText = document.getText();
+  const sourceFile = ts.createSourceFile(
+    document.uri.fsPath,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    document.languageId === 'javascriptreact' ? ts.ScriptKind.JSX : ts.ScriptKind.TSX
+  );
+
+  const edit = new WorkspaceEdit();
+  edit.replace(document.uri, selection.selection, `<${componentName} />`);
+
+  if (!hasImportForModule(sourceFile, importPath)) {
+    const insertion = findImportInsertion(sourceFile);
+    const insertText = buildImportInsertionText(
+      sourceText,
+      insertion.offset,
+      document.eol === EndOfLine.CRLF ? '\r\n' : '\n',
+      `import ${componentName} from '${importPath}';`
+    );
+    edit.insert(document.uri, document.positionAt(insertion.offset), insertText);
+  }
+
+  return workspace.applyEdit(edit);
+}
+
+function buildRelativeImportPath(document: TextDocument, targetUri: Uri): string {
+  const fromDir = dirname(document.uri.fsPath);
+  let relativePath = relative(fromDir, targetUri.fsPath);
+  relativePath = relativePath.replace(/\\/g, '/');
+  if (!relativePath.startsWith('.')) {
+    relativePath = `./${relativePath}`;
+  }
+  return relativePath;
+}
+
+function isDirectiveStatement(statement: ts.Statement): boolean {
+  if (!ts.isExpressionStatement(statement)) {
+    return false;
+  }
+  const expr = statement.expression;
+  return ts.isStringLiteralLike(expr);
+}
+
+function findImportInsertion(sourceFile: ts.SourceFile): { offset: number } {
+  const statements = sourceFile.statements;
+  let index = 0;
+  let directiveEnd = 0;
+
+  while (index < statements.length && isDirectiveStatement(statements[index])) {
+    directiveEnd = statements[index].end;
+    index += 1;
+  }
+
+  let lastImportEnd = -1;
+  for (; index < statements.length; index += 1) {
+    const statement = statements[index];
+    if (ts.isImportDeclaration(statement) || ts.isImportEqualsDeclaration(statement)) {
+      lastImportEnd = statement.end;
+      continue;
+    }
+    break;
+  }
+
+  if (lastImportEnd >= 0) {
+    return { offset: lastImportEnd };
+  }
+
+  return { offset: directiveEnd };
+}
+
+function hasImportForModule(sourceFile: ts.SourceFile, modulePath: string): boolean {
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement)) {
+      continue;
+    }
+    if (!ts.isStringLiteral(statement.moduleSpecifier)) {
+      continue;
+    }
+    if (statement.moduleSpecifier.text === modulePath) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function buildImportInsertionText(
+  sourceText: string,
+  offset: number,
+  eol: string,
+  importStatement: string
+): string {
+  const prevChar = offset > 0 ? sourceText[offset - 1] : '';
+  const nextChar = offset < sourceText.length ? sourceText[offset] : '';
+  const needsPrefix = offset > 0 && !isLineBreakChar(prevChar);
+  const needsSuffix = offset >= sourceText.length || !isLineBreakChar(nextChar);
+  return `${needsPrefix ? eol : ''}${importStatement}${needsSuffix ? eol : ''}`;
+}
+
+function isLineBreakChar(char: string): boolean {
+  return char === '\n' || char === '\r';
 }
