@@ -18,7 +18,9 @@
     "onLanguage:collie",
     "onCommand:collie.convertTsxSelectionToCollie",
     "onCommand:collie.copyAsJsx",
-    "onCommand:collie.copyAsTsx"
+    "onCommand:collie.copyAsTsx",
+    "onCommand:collie.convertToCollie",
+    "onCommand:collie.convertToTsxClipboard"
   ],
   "contributes": {
     "languages": [
@@ -169,6 +171,16 @@
         "category": "Collie"
       },
       {
+        "command": "collie.convertToCollie",
+        "title": "Convert to Collie",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.convertToTsxClipboard",
+        "title": "Convert to TSX (Copy to Clipboard)",
+        "category": "Collie"
+      },
+      {
         "command": "collie.openCompiledHtmlPartial",
         "title": "Collie: Open Compiled HTML Partial",
         "description": "Open the compiled HTML partial (collie/dist/<id>.html) for the active Collie template.",
@@ -193,12 +205,12 @@
     "menus": {
       "editor/context": [
         {
-          "command": "collie.convertTsxSelectionToCollie",
+          "command": "collie.convertToCollie",
           "when": "editorHasSelection && (editorLangId == typescriptreact || editorLangId == javascriptreact)",
           "group": "navigation@10"
         },
         {
-          "command": "collie.copyAsTsx",
+          "command": "collie.convertToTsxClipboard",
           "when": "editorLangId == collie",
           "group": "navigation@11"
         },
@@ -211,6 +223,16 @@
           "command": "collie.resetTokenCustomization",
           "when": "editorLangId == collie",
           "group": "navigation@100"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "collie.convertToCollie",
+          "when": "false"
+        },
+        {
+          "command": "collie.convertToTsxClipboard",
+          "when": "false"
         }
       ]
     },
