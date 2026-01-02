@@ -1,7 +1,7 @@
 import type { SemanticTokens, TextDocument, CancellationToken } from 'vscode';
 import { languages, SemanticTokensBuilder, workspace } from 'vscode';
 import type { FeatureContext } from '..';
-import { collieSemanticTokensLegend } from './legend';
+import { CollieSemanticTokenType, collieSemanticTokenTypes, collieSemanticTokensLegend } from './legend';
 import { tokenizeCollieSemanticTokens } from './tokenize';
 import type { CollieSemanticToken } from './tokenize';
 
@@ -12,6 +12,11 @@ interface TokenCacheEntry {
 }
 
 const tokenCache = new Map<string, TokenCacheEntry>();
+const tokenTypeLookup = new Map<CollieSemanticTokenType, number>();
+
+for (const [index, type] of collieSemanticTokenTypes.entries()) {
+  tokenTypeLookup.set(type, index);
+}
 
 function getDocumentCacheKey(document: TextDocument): string {
   return document.uri.toString();
@@ -24,7 +29,11 @@ function isSemanticTokensEnabled(): boolean {
 function buildSemanticTokens(tokens: CollieSemanticToken[]): SemanticTokens {
   const builder = new SemanticTokensBuilder(collieSemanticTokensLegend);
   for (const token of tokens) {
-    builder.push(token.line, token.startCharacter, token.length, token.type, []);
+    const tokenType = tokenTypeLookup.get(token.type);
+    if (tokenType === undefined) {
+      continue;
+    }
+    builder.push(token.line, token.startCharacter, token.length, tokenType, 0);
   }
   return builder.build();
 }
@@ -63,7 +72,11 @@ function buildRangeTokens(tokens: CollieSemanticToken[], startLine: number, endL
     if (token.line < startLine || token.line > endLine) {
       continue;
     }
-    builder.push(token.line, token.startCharacter, token.length, token.type, []);
+    const tokenType = tokenTypeLookup.get(token.type);
+    if (tokenType === undefined) {
+      continue;
+    }
+    builder.push(token.line, token.startCharacter, token.length, tokenType, 0);
   }
   return builder.build();
 }

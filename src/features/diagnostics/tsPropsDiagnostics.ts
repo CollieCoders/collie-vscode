@@ -115,7 +115,9 @@ function collectPropsFromJsx(
       if (ts.isIdentifier(tagName) && tagName.text === componentName) {
         for (const attr of node.attributes.properties) {
           if (ts.isJsxAttribute(attr)) {
-            props.add(attr.name.text);
+            if (ts.isIdentifier(attr.name)) {
+              props.add(attr.name.text);
+            }
           } else if (ts.isJsxSpreadAttribute(attr)) {
             sawSpread = true;
           }
