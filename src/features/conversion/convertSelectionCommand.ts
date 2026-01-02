@@ -17,6 +17,7 @@ import type { IrNode } from '../../convert/ir/nodes';
 import { printCollieDocument } from '../../convert/collie/print';
 import { convertJsxNodesToIr } from '../../convert/tsx/jsxToIr';
 import { JsxParseError, parseJsxSelection } from '../../convert/tsx/parseSelection';
+import { warnIfMissingConfig, warnIfMissingTooling } from '../config/warnings';
 
 const SUPPORTED_LANGUAGE_IDS = new Set(['typescriptreact', 'javascriptreact']);
 const OUTPUT_CHANNEL_NAME = 'Collie Conversion';
@@ -73,6 +74,9 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
   if (!selection) {
     return;
   }
+
+  await warnIfMissingConfig(selection.document, context);
+  await warnIfMissingTooling(selection.document, context);
 
   const channel = getConversionOutputChannel(context);
   context.logger.info('Collie conversion command invoked.');

@@ -8,6 +8,7 @@ import {
   registerCollieConfigWatcher,
   resolveCollieConfigForDocument
 } from '../../config/collieConfig';
+import { warnIfMissingConfig } from './warnings';
 
 function isCollieDocument(document: TextDocument): boolean {
   return document.languageId === 'collie';
@@ -18,7 +19,8 @@ async function handleCollieDocument(document: TextDocument, context: FeatureCont
     return;
   }
 
-  await resolveCollieConfigForDocument(document, context.logger);
+  const resolved = await resolveCollieConfigForDocument(document, context.logger);
+  await warnIfMissingConfig(document, context, resolved.configPath);
 }
 
 function activateConfigDiscovery(context: FeatureContext) {

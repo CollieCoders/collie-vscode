@@ -228,6 +228,50 @@ function buildAddPropDeclarationAction(
   return action;
 }
 
+function buildFixAllAction(document: TextDocument, diagnostics: Diagnostic[]): CodeAction | null {
+  const edits = collectFixEdits(document, diagnostics);
+  if (edits.length === 0) {
+    return null;
+  }
+
+  const edit = new WorkspaceEdit();
+  for (const fix of edits) {
+    edit.replace(document.uri, fix.range, fix.replacementText);
+  }
+
+  const action = new CodeAction('Fix all Collie issues', CodeActionKind.SourceFixAll);
+  action.edit = edit;
+  return action;
+}
+
+function collectFixEdits(document: TextDocument, diagnostics: Diagnostic[]): DiagnosticFix[] {
+  const fixes: Array<DiagnosticFix & { startOffset: number; endOffset: number }> = [];
+
+  for (const diagnostic of diagnostics) {
+    const data = diagnostic.data as DiagnosticData | undefined;
+    if (!data?.fix) {
+      continue;
+    }
+    const startOffset = document.offsetAt(data.fix.range.start);
+    const endOffset = document.offsetAt(data.fix.range.end);
+    fixes.push({ ...data.fix, startOffset, endOffset });
+  }
+
+  fixes.sort((a, b) => a.startOffset - b.startOffset);
+
+  const filtered: DiagnosticFix[] = [];
+  let lastEnd = -1;
+  for (const fix of fixes) {
+    if (fix.startOffset < lastEnd) {
+      continue;
+    }
+    filtered.push({ range: fix.range, replacementText: fix.replacementText });
+    lastEnd = fix.endOffset;
+  }
+
+  return filtered;
+}
+
 class CollieIdCodeActionProvider implements CodeActionProvider {
   provideCodeActions(document: TextDocument, range: Range): CodeAction[] {
     const actions: CodeAction[] = [];
@@ -323,9 +367,9 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
     // Compiler-provided fixes and props actions
     const actionableDiagnostics = diagnostics.filter(diag => diag.range.intersection(range));
     for (const diagnostic of actionableDiagnostics) {
-    const data = diagnostic.data as DiagnosticData | undefined;
-    if (!data) {
-      continue;
+      const data = diagnostic.data as DiagnosticData | undefined;
+      if (!data) {
+        continue;
     }
 
     if (data.fix) {
@@ -351,6 +395,11 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
         }
       }
     }
+
+    const fixAll = buildFixAllAction(document, diagnostics);
+    if (fixAll) {
+      actions.push(fixAll);
+    }
     
     return actions;
   }
@@ -363,7 +412,7 @@ function activateIdCodeActions(context: FeatureContext) {
     languages.registerCodeActionsProvider(
       { language: 'collie' },
       provider,
-      { providedCodeActionKinds: [CodeActionKind.QuickFix] }
+      { providedCodeActionKinds: [CodeActionKind.QuickFix, CodeActionKind.SourceFixAll] }
     )
   );
   
