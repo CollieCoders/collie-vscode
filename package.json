@@ -193,6 +193,16 @@
     "menus": {
       "editor/context": [
         {
+          "command": "collie.convertTsxSelectionToCollie",
+          "when": "editorHasSelection && (editorLangId == typescriptreact || editorLangId == javascriptreact)",
+          "group": "navigation@10"
+        },
+        {
+          "command": "collie.copyAsTsx",
+          "when": "editorLangId == collie",
+          "group": "navigation@11"
+        },
+        {
           "command": "collie.customizeTokenColor",
           "when": "editorLangId == collie",
           "group": "navigation@99"
