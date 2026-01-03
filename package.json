@@ -2,7 +2,7 @@
   "name": "collie-vscode",
   "displayName": "Collie",
   "description": "VS Code language support for Collie templates",
-  "version": "0.8.8",
+  "version": "1.0.3",
   "publisher": "collie",
   "license": "MIT",
   "repository": "https://github.com/collie-lang/collie-vscode",

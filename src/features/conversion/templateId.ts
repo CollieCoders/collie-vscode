@@ -69,7 +69,8 @@ function findNearestNamedScope(document: TextDocument, selection: Range): string
   const selectionStart = document.offsetAt(selection.start);
   const selectionEnd = document.offsetAt(selection.end);
 
-  let best: { name: string; size: number } | null = null;
+  let bestName: string | null = null;
+  let bestSize = Number.POSITIVE_INFINITY;
 
   const visit = (node: ts.Node): void => {
     if (!nodeContainsSelection(node, selectionStart, selectionEnd, sourceFile)) {
@@ -79,8 +80,9 @@ function findNearestNamedScope(document: TextDocument, selection: Range): string
     const name = getFunctionLikeName(node);
     if (name) {
       const size = node.getEnd() - node.getStart(sourceFile);
-      if (!best || size < best.size) {
-        best = { name, size };
+      if (size < bestSize) {
+        bestName = name;
+        bestSize = size;
       }
     }
 
@@ -88,7 +90,7 @@ function findNearestNamedScope(document: TextDocument, selection: Range): string
   };
 
   visit(sourceFile);
-  return best?.name ?? null;
+  return bestName;
 }
 
 function nodeContainsSelection(

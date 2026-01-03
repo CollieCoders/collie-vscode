@@ -63,7 +63,8 @@ function hasCollieNamedImport(namedBindings: ts.NamedImports): boolean {
     if (element.name.text === 'Collie') {
       return true;
     }
-    return ts.isIdentifier(element.propertyName) && element.propertyName.text === 'Collie';
+    const propertyName = element.propertyName;
+    return !!propertyName && ts.isIdentifier(propertyName) && propertyName.text === 'Collie';
   });
 }
 
