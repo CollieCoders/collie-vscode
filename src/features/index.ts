@@ -50,6 +50,7 @@ export async function activateFeatures(
   await runFeature('hover/provider', registerHoverProvider);
 
   await runFeature('completions/provider', registerCompletionsProvider);
+  await runFeature('completions/collieIdProvider', registerCollieIdCompletionProvider);
   await runFeature('completions/htmlCollieIdProvider', registerHtmlCollieIdProvider);
 
   await runFeature('symbols/workspaceSymbolProvider', registerWorkspaceSymbolProvider);
@@ -84,6 +85,7 @@ import { registerTsPropsDiagnostics } from './diagnostics/tsPropsDiagnostics';
 import { registerHoverProvider } from './hover/provider';
 
 import { registerCompletionsProvider } from './completions/provider';
+import { registerCollieIdCompletionProvider } from './completions/collieIdProvider';
 import { registerHtmlCollieIdProvider } from './completions/htmlCollieIdProvider';
 
 import { registerWorkspaceSymbolProvider } from './symbols/workspaceSymbolProvider';

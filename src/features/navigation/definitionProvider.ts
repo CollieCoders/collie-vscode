@@ -5,12 +5,15 @@ import type { ElementNode, Node } from '../../format/parser/ast';
 import type { SourceSpan } from '../../format/parser/diagnostics';
 import { getParsedDocument } from '../../lang/cache';
 import { findHtmlAnchorsByLogicalId } from '../../lang/navigation';
+import { getById } from '../../lang/templateIndex';
 import { isFeatureFlagEnabled } from '../featureFlags';
 import { resolveCollieConfigForDocument } from '../../config/collieConfig';
 import { getCssClassIndexForDocument } from '../css/indexer';
+import * as ts from 'typescript';
 
 const COMPONENT_EXTENSIONS = ['.collie', '.tsx'] as const;
 const CACHE_TTL_MS = 5000;
+const COLLIE_COMPONENT_NAMES = new Set(['Collie']);
 
 interface DefinitionCacheEntry {
   uri: Uri | null;
@@ -21,6 +24,10 @@ const definitionCache = new Map<string, DefinitionCacheEntry>();
 
 function shouldHandleDocument(document: TextDocument): boolean {
   return document.languageId === 'collie';
+}
+
+function isTsxDocument(document: TextDocument): boolean {
+  return document.languageId === 'typescriptreact' || document.languageId === 'javascriptreact';
 }
 
 function isComponentName(name: string): boolean {
@@ -190,6 +197,105 @@ function findComponentNode(nodes: Node[], offset: number): ElementNode | null {
   return null;
 }
 
+type CollieIdReference = {
+  id: string;
+  range: Range;
+};
+
+function findCollieIdReference(
+  document: TextDocument,
+  position: Position
+): CollieIdReference | null {
+  const sourceFile = ts.createSourceFile(
+    document.uri.fsPath,
+    document.getText(),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+  const offset = document.offsetAt(position);
+  let result: CollieIdReference | null = null;
+
+  const visit = (node: ts.Node): void => {
+    if (result) {
+      return;
+    }
+
+    if (ts.isJsxAttribute(node)) {
+      if (!ts.isIdentifier(node.name) || node.name.text !== 'id') {
+        return;
+      }
+
+      const initializer = node.initializer;
+      if (!initializer || !ts.isStringLiteralLike(initializer)) {
+        return;
+      }
+
+      const attributes = node.parent;
+      const opening = attributes?.parent;
+      if (!opening || (!ts.isJsxOpeningElement(opening) && !ts.isJsxSelfClosingElement(opening))) {
+        return;
+      }
+
+      const tagName = opening.tagName;
+      if (!ts.isIdentifier(tagName) || !COLLIE_COMPONENT_NAMES.has(tagName.text)) {
+        return;
+      }
+
+      const valueStart = initializer.getStart(sourceFile) + 1;
+      const valueEnd = Math.max(initializer.getEnd() - 1, valueStart);
+      if (offset < valueStart || offset > valueEnd) {
+        return;
+      }
+
+      result = {
+        id: initializer.text,
+        range: new Range(document.positionAt(valueStart), document.positionAt(valueEnd))
+      };
+      return;
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return result;
+}
+
+async function provideTsxDefinition(
+  document: TextDocument,
+  position: Position,
+  context: FeatureContext
+): Promise<Location | DefinitionLink[] | undefined> {
+  if (!isTsxDocument(document) || !isFeatureFlagEnabled('navigation')) {
+    return undefined;
+  }
+
+  try {
+    const reference = findCollieIdReference(document, position);
+    if (!reference || !reference.id) {
+      return undefined;
+    }
+
+    const entry = getById(reference.id);
+    if (!entry) {
+      return undefined;
+    }
+
+    return [
+      {
+        targetUri: entry.uri,
+        targetRange: entry.idRange,
+        targetSelectionRange: entry.idRange,
+        originSelectionRange: reference.range
+      }
+    ];
+  } catch (error) {
+    context.logger.error('TSX Collie definition provider failed.', error);
+    return undefined;
+  }
+}
+
 async function listSiblingDirectories(dirPath: string): Promise<string[]> {
   const dirs = new Set<string>([dirPath]);
   const parent = dirname(dirPath);
@@ -299,8 +405,17 @@ export function registerDefinitionProvider(context: FeatureContext) {
       return provideDefinition(document, position, context);
     }
   });
+  const tsxProvider = languages.registerDefinitionProvider(
+    [{ language: 'typescriptreact' }, { language: 'javascriptreact' }],
+    {
+      provideDefinition(document, position) {
+        return provideTsxDefinition(document, position, context);
+      }
+    }
+  );
 
   context.register(provider);
+  context.register(tsxProvider);
   const clearDefinitionCache = () => {
     definitionCache.clear();
   };
