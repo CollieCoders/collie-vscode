@@ -52,6 +52,62 @@ interface ConditionalChainState {
 const ELEMENT_NAME = /^[A-Za-z][A-Za-z0-9_-]*/;
 const CLASS_TOKEN = /^(?:[A-Za-z0-9_-]+|\$[A-Za-z_][A-Za-z0-9_]*)/;
 
+function isElementNode(node: ParentNode): node is ElementNode {
+  return 'type' in node && node.type === 'Element';
+}
+
+function hasTopLevelAssignment(payload: string): boolean {
+  let quote: '"' | "'" | '`' | null = null;
+  let braceDepth = 0;
+  let escapeNext = false;
+
+  for (let i = 0; i < payload.length; i++) {
+    const ch = payload[i];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (quote) {
+      if (ch === '\\') {
+        escapeNext = true;
+        continue;
+      }
+      if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      continue;
+    }
+    if (ch === '{') {
+      braceDepth += 1;
+      continue;
+    }
+    if (ch === '}') {
+      braceDepth = Math.max(0, braceDepth - 1);
+      continue;
+    }
+    if (ch === '=' && braceDepth === 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function looksLikeAttributePayload(payload: string): boolean {
+  if (!payload) {
+    return false;
+  }
+  if (payload.startsWith('(')) {
+    return true;
+  }
+  return hasTopLevelAssignment(payload);
+}
+
 export function parse(source: string): ParseResult {
   const diagnostics: Diagnostic[] = [];
   const root: RootNode = { type: 'Root', children: [] };
@@ -488,6 +544,12 @@ export function parse(source: string): ParseResult {
       continue;
     }
 
+    if (isElementNode(parent) && looksLikeAttributePayload(trimmed)) {
+      parent.attributeLines ??= [];
+      parent.attributeLines.push(trimmed);
+      continue;
+    }
+
     const element = parseElement(trimmed, lineNumber, indent + 1, lineOffset, diagnostics);
     if (!element) {
       continue;
@@ -732,6 +794,18 @@ function parseTextLine(
     payloadColumn += 1;
   }
 
+  const parts = parseTextPayload(payload, lineNumber, payloadColumn, lineOffset, diagnostics);
+
+  return { type: 'Text', parts, placement, span };
+}
+
+function parseTextPayload(
+  payload: string,
+  lineNumber: number,
+  payloadColumn: number,
+  lineOffset: number,
+  diagnostics: Diagnostic[]
+): TextNode['parts'] {
   const parts: TextNode['parts'] = [];
   let cursor = 0;
 
@@ -869,7 +943,20 @@ function parseTextLine(
     }
   }
 
-  return { type: 'Text', parts, placement, span };
+  return parts;
+}
+
+function parseInlineTextPayload(
+  payload: string,
+  lineNumber: number,
+  column: number,
+  lineOffset: number,
+  diagnostics: Diagnostic[]
+): TextNode {
+  const trimmed = payload.trimEnd();
+  const span = createSpan(lineNumber, column, Math.max(trimmed.length || 1, 1), lineOffset);
+  const parts = parseTextPayload(trimmed, lineNumber, column, lineOffset, diagnostics);
+  return { type: 'Text', parts, placement: 'inline', span };
 }
 
 function parseExpressionLine(
@@ -1061,7 +1148,8 @@ function parseElement(
   let rest = line.slice(raw.length);
   let inlineText: TextNode | null = null;
   let consumed = raw.length;
-  let sawAttributes = false;
+  let sawAttributeGroup = false;
+  const attributes: string[] = [];
 
   while (rest.length > 0) {
     // consume whitespace
@@ -1074,7 +1162,7 @@ function parseElement(
     if (rest.length === 0) break;
 
     if (rest.startsWith('(')) {
-      if (sawAttributes) {
+      if (sawAttributeGroup) {
         pushDiag(
           diagnostics,
           'COLLIE004',
@@ -1097,9 +1185,13 @@ function parseElement(
         );
         return null;
       }
+      const group = rest.slice(0, closeIndex + 1).trim();
+      if (group) {
+        attributes.push(group);
+      }
       rest = rest.slice(closeIndex + 1);
       consumed += closeIndex + 1;
-      sawAttributes = true;
+      sawAttributeGroup = true;
       continue;
     }
 
@@ -1148,16 +1240,22 @@ function parseElement(
       continue;
     }
 
-    // anything else is invalid
-    pushDiag(
-      diagnostics,
-      'COLLIE004',
-      'Element lines may only contain .class shorthands or inline text after the tag name.',
+    if (looksLikeAttributePayload(rest)) {
+      const payload = rest.trimEnd();
+      if (payload) {
+        attributes.push(payload);
+      }
+      break;
+    }
+
+    inlineText = parseInlineTextPayload(
+      rest,
       lineNumber,
       column + consumed,
-      lineOffset
+      lineOffset,
+      diagnostics
     );
-    return null;
+    break;
   }
 
   const element: ElementNode = {
@@ -1171,6 +1269,9 @@ function parseElement(
 
   if (classes.length) {
     element.classSpans = classSpans;
+  }
+  if (attributes.length) {
+    element.attributes = attributes;
   }
 
   return element;

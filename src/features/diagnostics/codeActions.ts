@@ -405,47 +405,6 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
       }
     }
 
-    // Find missing HTML placeholder diagnostics
-    const placeholderDiagnostics = diagnostics.filter(diag =>
-      diag.code === 'COLLIE404' && diag.range.intersection(range)
-    );
-
-    for (const diagnostic of placeholderDiagnostics) {
-      // Extract the template ID from the diagnostic message
-      const match = diagnostic.message.match(/Template id "([^"]+)" has no matching HTML placeholder/);
-      if (!match) {
-        continue;
-      }
-
-      const templateId = match[1];
-      const placeholderId = `${templateId}-collie`;
-
-      // Action 1: Search workspace for the placeholder ID
-      const searchAction = new CodeAction(
-        `Search workspace for "${placeholderId}"`,
-        CodeActionKind.QuickFix
-      );
-      searchAction.command = {
-        title: 'Search workspace',
-        command: 'workbench.action.findInFiles',
-        arguments: [{ query: placeholderId, isRegex: false }]
-      };
-      searchAction.diagnostics = [diagnostic];
-      actions.push(searchAction);
-
-      // Action 2: Open HTML files in workspace
-      const openHtmlAction = new CodeAction(
-        'Open HTML files in workspace',
-        CodeActionKind.QuickFix
-      );
-      openHtmlAction.command = {
-        title: 'Open HTML files',
-        command: 'collie.openWorkspaceHtmlFiles'
-      };
-      openHtmlAction.diagnostics = [diagnostic];
-      actions.push(openHtmlAction);
-    }
-
     // Compiler-provided fixes and props actions
     const actionableDiagnostics = diagnostics.filter(diag => diag.range.intersection(range));
     for (const diagnostic of actionableDiagnostics) {
@@ -550,25 +509,6 @@ export function registerDiagnosticsCodeActions(context: FeatureContext) {
       async (uris: Array<{ toString(): string }>) => {
         for (const uri of uris) {
           await window.showTextDocument(uri as any, { preview: false });
-        }
-      }
-    )
-  );
-
-  // Register the open workspace HTML files command
-  context.register(
-    commands.registerCommand(
-      'collie.openWorkspaceHtmlFiles',
-      async () => {
-        const htmlFiles = await workspace.findFiles('**/*.html', '**/node_modules/**', 10);
-
-        if (htmlFiles.length === 0) {
-          window.showInformationMessage('No HTML files found in workspace.');
-          return;
-        }
-
-        for (const uri of htmlFiles) {
-          await window.showTextDocument(uri, { preview: false });
         }
       }
     )

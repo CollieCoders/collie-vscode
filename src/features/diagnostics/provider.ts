@@ -4,18 +4,15 @@ import {
   languages,
   Position,
   Range,
-  Uri,
   workspace
 } from 'vscode';
 import type { TextDocument } from 'vscode';
 import type { FeatureContext } from '..';
 import { getParsedDocument, invalidateParsedDocument } from '../../lang/cache';
-import { hasHtmlPlaceholder, onHtmlAnchorsChanged } from '../../lang/htmlAnchorIndex';
 import { listByFile, onDidChangeTemplateIndex, type TemplateLocation } from '../../lang/templateIndex';
 import type { ParsedDocument } from '../../lang';
 import type { Diagnostic as ParserDiagnostic, SourceSpan } from '../../format/parser/diagnostics';
 import { isFeatureFlagEnabled, onDidChangeFeatureFlags } from '../featureFlags';
-import * as path from 'path';
 import { collectCompilerDiagnostics } from './compilerDiagnostics';
 import { onDidChangeCollieConfig, resolveCollieConfigForDocument } from '../../config/collieConfig';
 import { getCssClassIndexForDocument, getUnknownClassOverrideSetting } from '../css/indexer';
@@ -28,32 +25,11 @@ const REFRESH_DEBOUNCE_MS = 250;
 const REFRESH_OPEN_DOCS_KEY = '__collie_refresh_open_docs__';
 const COLLIE_GLOB = '**/*.collie';
 const COLLIE_EXCLUDE_GLOB = '**/{node_modules,dist,build,out,coverage,.git}/**';
-const FRAMEWORK_CONFIG_FILES = [
-  'vite.config.js',
-  'vite.config.ts',
-  'vite.config.mjs',
-  'vite.config.cjs',
-  'vite.config.mts',
-  'next.config.js',
-  'next.config.ts',
-  'next.config.mjs',
-  'next.config.cjs',
-  'angular.json'
-];
-const FRAMEWORK_PACKAGE_MARKERS = new Set([
-  'react',
-  'react-dom',
-  'next',
-  'vite',
-  '@angular/core',
-  '@angular/cli'
-]);
 const pendingDiagnostics = new Map<string, ReturnType<typeof setTimeout>>();
 let templateIndexVersion = 0;
 let cachedTemplateEntriesVersion = -1;
 let cachedTemplateEntries: Map<string, TemplateLocation[]> = new Map();
 let cachedTemplateEntriesPromise: Promise<Map<string, TemplateLocation[]>> | null = null;
-const frameworkDetectionCache = new Map<string, boolean>();
 
 function invalidateTemplateEntryCache(): void {
   templateIndexVersion += 1;
@@ -91,62 +67,6 @@ function convertParserDiagnostic(document: TextDocument, diagnostic: ParserDiagn
   vscodeDiag.code = diagnostic.code;
   vscodeDiag.source = 'collie';
   return vscodeDiag;
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await workspace.fs.stat(Uri.file(filePath));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function isFrameworkProject(document: TextDocument): Promise<boolean> {
-  const workspaceFolder = workspace.getWorkspaceFolder(document.uri);
-  if (!workspaceFolder) {
-    return false;
-  }
-
-  const cacheKey = workspaceFolder.uri.fsPath;
-  const cached = frameworkDetectionCache.get(cacheKey);
-  if (cached !== undefined) {
-    return cached;
-  }
-
-  const root = workspaceFolder.uri.fsPath;
-  for (const configFile of FRAMEWORK_CONFIG_FILES) {
-    const candidate = path.join(root, configFile);
-    if (await fileExists(candidate)) {
-      frameworkDetectionCache.set(cacheKey, true);
-      return true;
-    }
-  }
-
-  const packageJsonPath = path.join(root, 'package.json');
-  if (await fileExists(packageJsonPath)) {
-    try {
-      const data = await workspace.fs.readFile(Uri.file(packageJsonPath));
-      const text = new TextDecoder('utf-8').decode(data);
-      const pkg = JSON.parse(text) as Record<string, unknown>;
-      const deps = {
-        ...(pkg.dependencies as Record<string, string> | undefined),
-        ...(pkg.devDependencies as Record<string, string> | undefined),
-        ...(pkg.peerDependencies as Record<string, string> | undefined)
-      };
-      for (const marker of FRAMEWORK_PACKAGE_MARKERS) {
-        if (deps && marker in deps) {
-          frameworkDetectionCache.set(cacheKey, true);
-          return true;
-        }
-      }
-    } catch {
-      // Ignore package.json parse errors and fall back to vanilla behavior.
-    }
-  }
-
-  frameworkDetectionCache.set(cacheKey, false);
-  return false;
 }
 
 function mapSeverity(severity: ParserDiagnostic['severity']): DiagnosticSeverity {
@@ -303,52 +223,6 @@ async function collectIdCollisionDiagnostics(document: TextDocument): Promise<VS
     const message = `Duplicate Collie template id "${entry.id}".\nAlso defined in:\n${othersList}`;
     const diagnostic = new VSDiagnostic(entry.idRange, message, DiagnosticSeverity.Error);
     diagnostic.code = 'COLLIE403';
-    diagnostic.source = 'collie';
-    diagnostics.push(diagnostic);
-  }
-
-  return diagnostics;
-}
-
-function collectMissingHtmlPlaceholderDiagnostics(document: TextDocument, parsed: ParsedDocument): VSDiagnostic[] {
-  const diagnostics: VSDiagnostic[] = [];
-
-  // Determine this document's template ID
-  let templateId: string;
-  let idSpan: SourceSpan | undefined;
-  let isExplicit: boolean;
-
-  if (parsed.ast.id) {
-    templateId = parsed.ast.id;
-    idSpan = parsed.ast.idSpan;
-    isExplicit = true;
-  } else {
-    const basename = path.basename(document.uri.fsPath, '.collie');
-    let normalized = basename;
-    if (normalized.endsWith('-collie')) {
-      normalized = normalized.slice(0, -7);
-    }
-    templateId = normalized;
-    isExplicit = false;
-  }
-
-  // Check if there's a matching HTML placeholder
-  if (!hasHtmlPlaceholder(templateId)) {
-    let range: Range;
-
-    if (isExplicit && idSpan) {
-      // Use the ID directive span
-      range = spanToRange(document, idSpan);
-    } else {
-      // Use filename span (first line)
-      range = new Range(0, 0, 0, Math.max(templateId.length, 1));
-    }
-
-    const message = `Template id "${templateId}" has no matching HTML placeholder. ` +
-      `Add id="${templateId}-collie" to your HTML to render this template.`;
-
-    const diagnostic = new VSDiagnostic(range, message, DiagnosticSeverity.Warning);
-    diagnostic.code = 'COLLIE404';
     diagnostic.source = 'collie';
     diagnostics.push(diagnostic);
   }
@@ -517,20 +391,10 @@ async function applyDiagnostics(
 
   const diagnostics: VSDiagnostic[] = [];
   const config = await resolveCollieConfigForDocument(document, context.logger);
-  const dialect = config.parsed.dialect?.toLowerCase();
-  const isNonVanillaDialect = Boolean(dialect && dialect !== 'html' && dialect !== 'vanilla');
-  const reactIntegrationEnabled =
-    workspace.getConfiguration().get<boolean>('collie.props.reactIntegration.enabled', false) ||
-    config.parsed.propsReactIntegrationEnabled === true;
-  const frameworkProject = await isFrameworkProject(document);
-  const shouldCheckHtmlPlaceholders = !reactIntegrationEnabled && !isNonVanillaDialect && !frameworkProject;
 
   if (parsed) {
     diagnostics.push(...collectParserDiagnostics(document, parsed));
     diagnostics.push(...await collectIdCollisionDiagnostics(document));
-    if (shouldCheckHtmlPlaceholders) {
-      diagnostics.push(...collectMissingHtmlPlaceholderDiagnostics(document, parsed));
-    }
   }
 
   diagnostics.push(...collectUnknownDirectiveDiagnostics(document));
@@ -673,13 +537,6 @@ export function registerDiagnosticsProvider(context: FeatureContext) {
       if (event.affectsConfiguration('collie.css.diagnostics.unknownClassOverride')) {
         scheduleOpenDocumentsRefresh(collection, context);
       }
-    })
-  );
-
-  // Refresh diagnostics when HTML anchors change
-  context.register(
-    onHtmlAnchorsChanged(() => {
-      scheduleOpenDocumentsRefresh(collection, context);
     })
   );
 

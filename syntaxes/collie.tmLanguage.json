@@ -4,6 +4,7 @@
   "scopeName": "source.collie",
   "fileTypes": ["collie"],
   "patterns": [
+    { "include": "#strings" },
     { "include": "#comments" },
     { "include": "#idDirective" },
     { "include": "#directives" },
@@ -18,6 +19,44 @@
     { "include": "#pipeText" }
   ],
   "repository": {
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.collie",
+          "begin": "\"",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.collie" }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.collie" }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.collie",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.collie",
+          "begin": "'",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.collie" }
+          },
+          "end": "'",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.collie" }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.collie",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
     "comments": {
       "patterns": [
         {
