@@ -12,11 +12,14 @@ import {
 import type { FeatureContext } from '..';
 import { getParsedDocument } from '../../lang/cache';
 import { onDidChangeCollieConfig, resolveCollieConfigForDocument } from '../../config/collieConfig';
+import { listIds, onDidChangeTemplateIndex } from '../../lang/templateIndex';
+import { isFeatureFlagEnabled, onDidChangeFeatureFlags } from '../featureFlags';
 import * as path from 'path';
 import * as ts from 'typescript';
 import type { SourceSpan } from '../../format/parser/diagnostics';
 
 const COLLECTION_NAME = 'collie-react-props';
+const TEMPLATE_USAGE_COLLECTION = 'collie-template-usage';
 const ENABLED_SETTING_KEY = 'collie.props.reactIntegration.enabled';
 const TSX_INCLUDE_GLOB = '**/*.{tsx,jsx}';
 const TSX_EXCLUDE_GLOB = '**/{node_modules,dist,build}/**';
@@ -24,6 +27,7 @@ const MAX_TS_FILES = 200;
 const MAX_TOTAL_BYTES = 5 * 1024 * 1024;
 const MAX_FILE_BYTES = 512 * 1024;
 const DIAGNOSTIC_DEBOUNCE_MS = 300;
+const COLLIE_COMPONENT_NAMES = new Set(['Collie']);
 
 interface UsageResult {
   props: Set<string>;
@@ -36,9 +40,18 @@ interface CacheEntry {
   diagnostics: VSDiagnostic[];
 }
 
+interface TemplateUsageCacheEntry {
+  documentVersion: number;
+  templateIndexVersion: number;
+  diagnostics: VSDiagnostic[];
+}
+
 const pendingDiagnostics = new Map<string, ReturnType<typeof setTimeout>>();
+const pendingUsageDiagnostics = new Map<string, ReturnType<typeof setTimeout>>();
 const diagnosticsCache = new Map<string, CacheEntry>();
+const templateUsageCache = new Map<string, TemplateUsageCacheEntry>();
 let workspaceUsageVersion = 0;
+let templateIndexVersion = 0;
 
 function isCollieDocument(document: TextDocument): boolean {
   return document.languageId === 'collie';
@@ -130,6 +143,73 @@ function collectPropsFromJsx(
 
   visit(sourceFile);
   return { props, sawSpread };
+}
+
+function collectUnknownTemplateIdDiagnostics(document: TextDocument): VSDiagnostic[] {
+  if (!isFeatureFlagEnabled('diagnostics')) {
+    return [];
+  }
+
+  const ids = listIds();
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const knownIds = new Set(ids);
+  const sourceFile = ts.createSourceFile(
+    document.uri.fsPath,
+    document.getText(),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+
+  const diagnostics: VSDiagnostic[] = [];
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
+      const tagName = node.tagName;
+      if (ts.isIdentifier(tagName) && COLLIE_COMPONENT_NAMES.has(tagName.text)) {
+        for (const attr of node.attributes.properties) {
+          if (!ts.isJsxAttribute(attr)) {
+            continue;
+          }
+
+          if (!ts.isIdentifier(attr.name) || attr.name.text !== 'id') {
+            continue;
+          }
+
+          const initializer = attr.initializer;
+          if (!initializer || !ts.isStringLiteralLike(initializer)) {
+            continue;
+          }
+
+          const value = initializer.text;
+          if (knownIds.has(value)) {
+            continue;
+          }
+
+          const range = new Range(
+            document.positionAt(initializer.getStart(sourceFile)),
+            document.positionAt(initializer.getEnd())
+          );
+          const diagnostic = new VSDiagnostic(
+            range,
+            `Unknown Collie template id "${value}".`,
+            DiagnosticSeverity.Warning
+          );
+          diagnostic.code = 'COLLIE701';
+          diagnostic.source = 'collie';
+          diagnostics.push(diagnostic);
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return diagnostics;
 }
 
 async function findComponentPropUsages(
@@ -280,6 +360,32 @@ async function updateDiagnostics(
   collection.set(document.uri, diagnostics);
 }
 
+async function updateTemplateUsageDiagnostics(
+  document: TextDocument,
+  collection: ReturnType<typeof languages.createDiagnosticCollection>
+): Promise<void> {
+  if (!isTsxDocument(document) || !isFeatureFlagEnabled('diagnostics')) {
+    collection.delete(document.uri);
+    return;
+  }
+
+  const cacheKey = document.uri.toString();
+  const cached = templateUsageCache.get(cacheKey);
+  if (cached && cached.documentVersion === document.version && cached.templateIndexVersion === templateIndexVersion) {
+    collection.set(document.uri, cached.diagnostics);
+    return;
+  }
+
+  const diagnostics = collectUnknownTemplateIdDiagnostics(document);
+  templateUsageCache.set(cacheKey, {
+    documentVersion: document.version,
+    templateIndexVersion,
+    diagnostics
+  });
+
+  collection.set(document.uri, diagnostics);
+}
+
 function scheduleDiagnostics(
   document: TextDocument,
   collection: ReturnType<typeof languages.createDiagnosticCollection>,
@@ -297,12 +403,37 @@ function scheduleDiagnostics(
   pendingDiagnostics.set(key, handle);
 }
 
+function scheduleTemplateUsageDiagnostics(
+  document: TextDocument,
+  collection: ReturnType<typeof languages.createDiagnosticCollection>
+): void {
+  const key = document.uri.toString();
+  const existing = pendingUsageDiagnostics.get(key);
+  if (existing) {
+    clearTimeout(existing);
+  }
+  const handle = setTimeout(() => {
+    pendingUsageDiagnostics.delete(key);
+    void updateTemplateUsageDiagnostics(document, collection);
+  }, DIAGNOSTIC_DEBOUNCE_MS);
+  pendingUsageDiagnostics.set(key, handle);
+}
+
 function clearPendingDiagnostics(document: TextDocument): void {
   const key = document.uri.toString();
   const handle = pendingDiagnostics.get(key);
   if (handle) {
     clearTimeout(handle);
     pendingDiagnostics.delete(key);
+  }
+}
+
+function clearPendingTemplateUsageDiagnostics(document: TextDocument): void {
+  const key = document.uri.toString();
+  const handle = pendingUsageDiagnostics.get(key);
+  if (handle) {
+    clearTimeout(handle);
+    pendingUsageDiagnostics.delete(key);
   }
 }
 
@@ -317,16 +448,35 @@ function refreshOpenDocuments(
   }
 }
 
+function refreshOpenTemplateUsageDocuments(
+  collection: ReturnType<typeof languages.createDiagnosticCollection>
+): void {
+  for (const document of workspace.textDocuments) {
+    if (isTsxDocument(document)) {
+      void updateTemplateUsageDiagnostics(document, collection);
+    }
+  }
+}
+
 export function registerTsPropsDiagnostics(context: FeatureContext) {
   const collection = languages.createDiagnosticCollection(COLLECTION_NAME);
   context.register(collection);
 
   refreshOpenDocuments(collection, context);
 
+  const usageCollection = languages.createDiagnosticCollection(TEMPLATE_USAGE_COLLECTION);
+  context.register(usageCollection);
+  refreshOpenTemplateUsageDocuments(usageCollection);
+
   context.register(
     workspace.onDidOpenTextDocument(document => {
       if (isCollieDocument(document)) {
         scheduleDiagnostics(document, collection, context);
+        return;
+      }
+
+      if (isTsxDocument(document)) {
+        scheduleTemplateUsageDiagnostics(document, usageCollection);
       }
     })
   );
@@ -335,6 +485,11 @@ export function registerTsPropsDiagnostics(context: FeatureContext) {
     workspace.onDidChangeTextDocument(event => {
       if (isCollieDocument(event.document)) {
         scheduleDiagnostics(event.document, collection, context);
+        return;
+      }
+
+      if (isTsxDocument(event.document)) {
+        scheduleTemplateUsageDiagnostics(event.document, usageCollection);
       }
     })
   );
@@ -349,6 +504,7 @@ export function registerTsPropsDiagnostics(context: FeatureContext) {
       if (isTsxDocument(document)) {
         workspaceUsageVersion += 1;
         refreshOpenDocuments(collection, context);
+        scheduleTemplateUsageDiagnostics(document, usageCollection);
       }
     })
   );
@@ -358,6 +514,12 @@ export function registerTsPropsDiagnostics(context: FeatureContext) {
       if (isCollieDocument(document)) {
         clearPendingDiagnostics(document);
         collection.delete(document.uri);
+        return;
+      }
+
+      if (isTsxDocument(document)) {
+        clearPendingTemplateUsageDiagnostics(document);
+        usageCollection.delete(document.uri);
       }
     })
   );
@@ -367,6 +529,12 @@ export function registerTsPropsDiagnostics(context: FeatureContext) {
       if (event.affectsConfiguration(ENABLED_SETTING_KEY)) {
         diagnosticsCache.clear();
         refreshOpenDocuments(collection, context);
+        return;
+      }
+
+      if (event.affectsConfiguration('collie.features.diagnostics')) {
+        templateUsageCache.clear();
+        refreshOpenTemplateUsageDocuments(usageCollection);
       }
     })
   );
@@ -375,6 +543,25 @@ export function registerTsPropsDiagnostics(context: FeatureContext) {
     onDidChangeCollieConfig(() => {
       diagnosticsCache.clear();
       refreshOpenDocuments(collection, context);
+    })
+  );
+
+  context.register(
+    onDidChangeTemplateIndex(() => {
+      templateIndexVersion += 1;
+      templateUsageCache.clear();
+      refreshOpenTemplateUsageDocuments(usageCollection);
+    })
+  );
+
+  context.register(
+    onDidChangeFeatureFlags(flags => {
+      if (flags.diagnostics) {
+        refreshOpenTemplateUsageDocuments(usageCollection);
+        return;
+      }
+
+      usageCollection.clear();
     })
   );
 

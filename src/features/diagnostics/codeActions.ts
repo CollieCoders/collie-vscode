@@ -7,6 +7,7 @@ import {
   Position,
   Range,
   TextDocument,
+  Uri,
   WorkspaceEdit,
   commands,
   window,
@@ -14,12 +15,19 @@ import {
 } from 'vscode';
 import type { Diagnostic } from 'vscode';
 import type { FeatureContext } from '..';
-import { getTemplateIdEntries } from '../../lang/cache';
+import { listByFile, onDidChangeTemplateIndex, type TemplateLocation } from '../../lang/templateIndex';
 
 const ID_DIRECTIVE_PATTERN = /^(?:#|)id(?:\s+|:\s*|=\s*)(.+)$/i;
 const ID_DIRECTIVE_WITH_VALUE_PATTERN = /^(\s*(?:#|)id(?:\s+|:\s*|=\s*))(.*)$/i;
 const TEMPLATE_ID_PATTERN = /^[A-Za-z][A-Za-z0-9._-]*$/;
+const COLLIE_GLOB = '**/*.collie';
+const COLLIE_EXCLUDE_GLOB = '**/node_modules/**';
 const DEFAULT_PROP_TYPE = 'unknown';
+
+let templateIndexVersion = 0;
+let cachedTemplateEntriesVersion = -1;
+let cachedTemplateEntries: Map<string, TemplateLocation[]> = new Map();
+let cachedTemplateEntriesPromise: Promise<Map<string, TemplateLocation[]>> | null = null;
 
 type DiagnosticFix = {
   range: Range;
@@ -43,6 +51,44 @@ function getEol(document: TextDocument): string {
 function getIndentSize(): number {
   const config = workspace.getConfiguration('collie');
   return Math.max(1, config.get<number>('format.indentSize', 2));
+}
+
+function invalidateTemplateEntryCache(): void {
+  templateIndexVersion += 1;
+  cachedTemplateEntriesVersion = -1;
+  cachedTemplateEntries.clear();
+  cachedTemplateEntriesPromise = null;
+}
+
+async function getTemplateEntriesById(): Promise<Map<string, TemplateLocation[]>> {
+  if (cachedTemplateEntriesVersion === templateIndexVersion) {
+    return cachedTemplateEntries;
+  }
+
+  if (cachedTemplateEntriesPromise) {
+    return cachedTemplateEntriesPromise;
+  }
+
+  cachedTemplateEntriesPromise = (async () => {
+    const entriesById = new Map<string, TemplateLocation[]>();
+    const files = await workspace.findFiles(COLLIE_GLOB, COLLIE_EXCLUDE_GLOB);
+
+    for (const uri of files) {
+      const entries = listByFile(uri);
+      for (const entry of entries) {
+        const existing = entriesById.get(entry.id) ?? [];
+        existing.push(entry);
+        entriesById.set(entry.id, existing);
+      }
+    }
+
+    cachedTemplateEntries = entriesById;
+    cachedTemplateEntriesVersion = templateIndexVersion;
+    cachedTemplateEntriesPromise = null;
+    return entriesById;
+  })();
+
+  return cachedTemplateEntriesPromise;
 }
 
 function findPropsBlock(document: TextDocument): { line: number; indent: number; insertLine: number } | null {
@@ -300,14 +346,19 @@ function findNearestIdDirective(
 }
 
 class CollieIdCodeActionProvider implements CodeActionProvider {
-  provideCodeActions(document: TextDocument, range: Range): CodeAction[] {
+  async provideCodeActions(document: TextDocument, range: Range): Promise<CodeAction[]> {
     const actions: CodeAction[] = [];
     const diagnostics = languages.getDiagnostics(document.uri);
+    let entriesById: Map<string, TemplateLocation[]> | null = null;
 
     // Find ID collision diagnostics
     const collisionDiagnostics = diagnostics.filter(diag =>
       diag.code === 'COLLIE403' && diag.range.intersection(range)
     );
+
+    if (collisionDiagnostics.length > 0) {
+      entriesById = await getTemplateEntriesById();
+    }
 
     for (const diagnostic of collisionDiagnostics) {
       // Extract the template ID from the diagnostic message
@@ -319,7 +370,7 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
       }
 
       const templateId = match[1];
-      const entries = getTemplateIdEntries(templateId);
+      const entries = entriesById?.get(templateId) ?? [];
       const currentUri = document.uri.toString();
       const others = entries.filter(entry => entry.uri.toString() !== currentUri);
 
@@ -338,6 +389,8 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
 
       // Action 2: Open conflicting templates
       if (others.length > 0) {
+        const otherUris = Array.from(new Set(others.map(entry => entry.uri.toString())))
+          .map(uri => Uri.parse(uri));
         const openAction = new CodeAction(
           `Open conflicting template${others.length > 1 ? 's' : ''}`,
           CodeActionKind.QuickFix
@@ -345,7 +398,7 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
         openAction.command = {
           title: 'Open conflicting templates',
           command: 'collie.openConflictingTemplates',
-          arguments: [others.map(e => e.uri)]
+          arguments: [otherUris]
         };
         openAction.diagnostics = [diagnostic];
         actions.push(openAction);
@@ -443,6 +496,12 @@ export function registerDiagnosticsCodeActions(context: FeatureContext) {
       provider,
       { providedCodeActionKinds: [CodeActionKind.QuickFix, CodeActionKind.SourceFixAll] }
     )
+  );
+
+  context.register(
+    onDidChangeTemplateIndex(() => {
+      invalidateTemplateEntryCache();
+    })
   );
 
     // Register the rename command
