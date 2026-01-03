@@ -183,6 +183,7 @@
       {
         "command": "collie.convertTsxSelectionToCollie",
         "title": "Collie: Convert JSX/TSX Selection to Collie",
+        "description": "Convert the selected JSX/TSX into a #id template block and insert <Collie id=\"...\"> (ensures import from @collie-lang/react).",
         "category": "Collie"
       },
       {
@@ -200,7 +201,7 @@
       {
         "command": "collie.convertToCollie",
         "title": "Convert to Collie",
-        "description": "Convert the selected JSX/TSX into a new `.collie` file.",
+        "description": "Convert the selected JSX/TSX into a #id template block and insert <Collie id=\"...\"> (ensures import from @collie-lang/react).",
         "category": "Collie"
       },
       {

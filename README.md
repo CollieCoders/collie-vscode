@@ -49,7 +49,7 @@ Collie for VS Code is a single, lightweight extension that provides:
   - **Completions** for directives, tags/components, and class aliases
 
 - **JSX/TSX interop**
-  - Convert a JSX/TSX selection into a `.collie` template
+  - Convert a JSX/TSX selection into a `#id` template block and insert `<Collie id="...">` usage
   - Copy a `.collie` file as JSX or TSX to paste into React code
   - Detailed conversion logs in a **Collie Conversion** output channel
 
@@ -65,6 +65,8 @@ Collie for VS Code is a single, lightweight extension that provides:
 Collie is an indentation-based template language designed to play nicely with React and TSX:
 
 ```collie
+#id ProfileCard
+
 #props
   user: User
   isEditing: boolean
@@ -93,6 +95,28 @@ Core ideas:
 
 > For full language docs and philosophy:
 > **TODO:** Add link to the main Collie language docs / repo here.
+
+## Template IDs and runtime usage
+
+Collie templates are discovered automatically by the Vite plugin and referenced by ID at runtime. You do not import `.collie` files directly.
+
+Each template block starts with `#id <id>`. A single `.collie` file can define multiple templates by repeating `#id` directives.
+
+```collie
+#id Blog.navbar
+nav.navbar
+  | Navigation
+
+#id Blog.footer
+footer.footer
+  | Footer
+```
+
+```tsx
+import { Collie } from '@collie-lang/react';
+
+<Collie id="Blog.navbar" />
+```
 
 ---
 
@@ -129,9 +153,11 @@ Core ideas:
 
 ## Getting Started
 
-1. **Create your first `.collie` file**
+1. **Create your first `.collie` file (each template starts with `#id`)**
 
    ```collie
+   #id Hero
+
    #props
      title: string
 
@@ -261,12 +287,12 @@ Current diagnostics include:
 * Parser errors/warnings from the Collie grammar
 * Unknown directives and dialect spellings like `@else-if`
 * Duplicate prop declarations
-* PascalCase `#id` enforcement, duplicate template IDs, and missing HTML placeholders
+* `#id` format validation, duplicate template IDs, and missing HTML placeholders
 * Props used but not declared in the `#props` block
 * Unknown CSS classes when a CSS index is available (respects `collie.css.diagnostics.unknownClassOverride`)
 * Optional React integration diagnostics when `collie.props.reactIntegration.enabled` is enabled
 
-Quick fixes are available for several diagnostics (dialect token normalization, PascalCase `#id`, add missing
+Quick fixes are available for several diagnostics (dialect token normalization, `#id` fixes, add missing
 props, “Fix all Collie issues”, and ID/HTML placeholder helpers).
 
 Diagnostics are deliberately throttled to avoid blocking your typing and are driven by the same parser used for formatting and other features.
@@ -280,7 +306,7 @@ Collie navigation currently includes:
 * **Document Symbols**
   Outline view entries for:
 
-  * The root template
+  * Each `#id` template block
   * `#props`
   * Elements / blocks
   * Conditionals (`@if/@elseIf/@else`)
@@ -296,8 +322,8 @@ Collie navigation currently includes:
 
 * **Open Compiled HTML Partial**
   Use `Collie: Open Compiled HTML Partial` to open `collie/dist/<id>.html` under the workspace root.
-  The `<id>` comes from an explicit `#id` directive, or (if missing) from the `.collie` filename with a
-  trailing `-collie` suffix removed.
+  The `<id>` comes from the active `#id` directive; multiple templates in one file each compile to their own
+  `collie/dist/<id>.html`.
 
 The definition provider uses simple, predictable heuristics and a short-lived cache so it stays responsive even in larger projects.
 
@@ -324,7 +350,7 @@ Completion items include:
 * **Tags & components:**
 
   * HTML-like tags
-  * Project components discovered from sibling `.collie`/`.tsx` files
+  * Project components and Collie templates discovered from sibling `.collie`/`.tsx` files
 * **Class aliases:** names declared under `#classes`
 
 The provider tries to be helpful without being noisy: items are filtered and sorted so directives and components you actually use stay near the top.
@@ -352,10 +378,11 @@ Workflow:
    * Converts it to an intermediate representation
    * Prints Collie output
    * Logs details to the **“Collie Conversion”** output channel
-4. The extension tries to create a `.collie` file next to the source component (using a PascalCase name
-   derived from the TSX filename or parent folder for `index`) and prepends `#id <ComponentName>` if missing.
-5. When a file is created, the original TSX selection is replaced with `<ComponentName />`,
-   and an import is inserted if needed.
+4. The extension creates or appends a `#id <id>` block in a `.collie` file next to the source (same basename,
+   or parent folder name for `index`). `.collie` files can contain multiple templates separated by `#id`.
+5. The original TSX selection is replaced with `<Collie id="<id>" />` and the extension ensures
+   `import { Collie } from '@collie-lang/react'` exists. Direct `.collie` imports are not used; the Vite
+   plugin discovers templates automatically.
 6. If a file can’t be created, the output is copied to your clipboard and opened in a preview editor instead.
 
 Unsupported constructs are never silently dropped; any issues are surfaced as warnings in the output channel.
