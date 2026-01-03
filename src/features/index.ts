@@ -54,6 +54,7 @@ export async function activateFeatures(
 
   await runFeature('symbols/workspaceSymbolProvider', registerWorkspaceSymbolProvider);
 
+  await runFeature('lang/templateIndex', registerTemplateIndex);
   await runFeature('lang/cacheWatcher', registerLangCacheWatcher);
 
   await runFeature('config/discovery', registerConfigDiscovery);
@@ -87,6 +88,7 @@ import { registerHtmlCollieIdProvider } from './completions/htmlCollieIdProvider
 
 import { registerWorkspaceSymbolProvider } from './symbols/workspaceSymbolProvider';
 
+import { registerTemplateIndex } from '../lang/templateIndex';
 import { registerLangCacheWatcher } from './lang/cacheWatcher';
 
 import { registerConfigDiscovery } from './config/discovery';
