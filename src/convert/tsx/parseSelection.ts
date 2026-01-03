@@ -15,9 +15,40 @@ export class JsxParseError extends Error {
 export interface JsxParseResult {
   readonly sourceFile: ts.SourceFile;
   readonly rootNodes: readonly ts.JsxChild[];
+  readonly selectionText: string;
 }
 
 export function parseJsxSelection(selection: string): JsxParseResult {
+  const attempts: string[] = [selection];
+  const extracted = extractJsxCandidate(selection);
+  if (extracted && extracted !== selection) {
+    attempts.push(extracted);
+  }
+
+  for (const attempt of attempts) {
+    const parsed = tryParseSelection(attempt);
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  throw new JsxParseError('Selection must contain at least one valid JSX element or fragment.');
+}
+
+function wrapSelection(selection: string): string {
+  return `${WRAPPER_PREFIX}${selection}${WRAPPER_SUFFIX}`;
+}
+
+function extractJsxCandidate(selection: string): string | null {
+  const firstLt = selection.indexOf('<');
+  const lastGt = selection.lastIndexOf('>');
+  if (firstLt >= 0 && lastGt > firstLt) {
+    return selection.slice(firstLt, lastGt + 1);
+  }
+  return null;
+}
+
+function tryParseSelection(selection: string): JsxParseResult | null {
   const wrappedSource = wrapSelection(selection);
   const sourceFile = ts.createSourceFile(
     VIRTUAL_SOURCE_FILE,
@@ -32,21 +63,15 @@ export function parseJsxSelection(selection: string): JsxParseResult {
   }).parseDiagnostics;
 
   if (parseDiagnostics && parseDiagnostics.length > 0) {
-    const [firstDiagnostic] = parseDiagnostics;
-    const message = ts.flattenDiagnosticMessageText(firstDiagnostic.messageText, '\n');
-    throw new JsxParseError(`Unable to parse the selected JSX: ${message}`);
+    return null;
   }
 
   const rootNodes = extractRootNodes(sourceFile);
   if (rootNodes.length === 0) {
-    throw new JsxParseError('No JSX content detected in the selection.');
+    return null;
   }
 
-  return { sourceFile, rootNodes };
-}
-
-function wrapSelection(selection: string): string {
-  return `${WRAPPER_PREFIX}${selection}${WRAPPER_SUFFIX}`;
+  return { sourceFile, rootNodes, selectionText: selection };
 }
 
 function extractRootNodes(sourceFile: ts.SourceFile): ts.JsxChild[] {
