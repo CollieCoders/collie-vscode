@@ -23,8 +23,10 @@ import type { Node } from '../../format/parser/ast';
 const SUPPORTED_DIRECTIVES = new Set(['@if', '@elseIf', '@else', '@for']);
 const DIALECT_DIRECTIVE_ALIASES = new Set(['@elseif', '@else-if']);
 const DIAGNOSTIC_DEBOUNCE_MS = 200;
+const REFRESH_DEBOUNCE_MS = 250;
+const REFRESH_OPEN_DOCS_KEY = '__collie_refresh_open_docs__';
 const COLLIE_GLOB = '**/*.collie';
-const COLLIE_EXCLUDE_GLOB = '**/node_modules/**';
+const COLLIE_EXCLUDE_GLOB = '**/{node_modules,dist,build,out,coverage,.git}/**';
 const pendingDiagnostics = new Map<string, ReturnType<typeof setTimeout>>();
 let templateIndexVersion = 0;
 let cachedTemplateEntriesVersion = -1;
@@ -458,18 +460,12 @@ function scheduleDiagnostics(
   context: FeatureContext
 ) {
   const key = document.uri.toString();
-  const existing = pendingDiagnostics.get(key);
-  if (existing) {
-    clearTimeout(existing);
-  }
-  const handle = setTimeout(() => {
-    pendingDiagnostics.delete(key);
+  scheduleDebounced(key, () => {
     void applyDiagnostics(document, collection, context);
     // After updating this document, refresh all other collie documents
     // to update their ID collision diagnostics
     refreshOtherCollieDocuments(document, collection, context);
   }, DIAGNOSTIC_DEBOUNCE_MS);
-  pendingDiagnostics.set(key, handle);
 }
 
 function refreshOtherCollieDocuments(
@@ -486,7 +482,22 @@ function refreshOtherCollieDocuments(
 }
 
 function clearPendingDiagnostics(document: TextDocument) {
-  const key = document.uri.toString();
+  cancelDebounced(document.uri.toString());
+}
+
+function scheduleDebounced(key: string, action: () => void, delayMs: number): void {
+  const existing = pendingDiagnostics.get(key);
+  if (existing) {
+    clearTimeout(existing);
+  }
+  const handle = setTimeout(() => {
+    pendingDiagnostics.delete(key);
+    action();
+  }, delayMs);
+  pendingDiagnostics.set(key, handle);
+}
+
+function cancelDebounced(key: string): void {
   const handle = pendingDiagnostics.get(key);
   if (handle) {
     clearTimeout(handle);
@@ -501,6 +512,22 @@ function refreshOpenDocuments(
   for (const document of workspace.textDocuments) {
     void applyDiagnostics(document, collection, context);
   }
+}
+
+function scheduleOpenDocumentsRefresh(
+  collection: ReturnType<typeof languages.createDiagnosticCollection>,
+  context: FeatureContext
+) {
+  if (!isFeatureFlagEnabled('diagnostics')) {
+    cancelDebounced(REFRESH_OPEN_DOCS_KEY);
+    return;
+  }
+
+  scheduleDebounced(REFRESH_OPEN_DOCS_KEY, () => {
+    if (isFeatureFlagEnabled('diagnostics')) {
+      refreshOpenDocuments(collection, context);
+    }
+  }, REFRESH_DEBOUNCE_MS);
 }
 
 export function registerDiagnosticsProvider(context: FeatureContext) {
@@ -540,8 +567,9 @@ export function registerDiagnosticsProvider(context: FeatureContext) {
   context.register(
     onDidChangeFeatureFlags(flags => {
       if (flags.diagnostics) {
-        refreshOpenDocuments(collection, context);
+        scheduleOpenDocumentsRefresh(collection, context);
       } else {
+        cancelDebounced(REFRESH_OPEN_DOCS_KEY);
         collection.clear();
       }
     })
@@ -549,14 +577,14 @@ export function registerDiagnosticsProvider(context: FeatureContext) {
 
   context.register(
     onDidChangeCollieConfig(() => {
-      refreshOpenDocuments(collection, context);
+      scheduleOpenDocumentsRefresh(collection, context);
     })
   );
 
   context.register(
     workspace.onDidChangeConfiguration(event => {
       if (event.affectsConfiguration('collie.css.diagnostics.unknownClassOverride')) {
-        refreshOpenDocuments(collection, context);
+        scheduleOpenDocumentsRefresh(collection, context);
       }
     })
   );
@@ -564,18 +592,14 @@ export function registerDiagnosticsProvider(context: FeatureContext) {
   // Refresh diagnostics when HTML anchors change
   context.register(
     onHtmlAnchorsChanged(() => {
-      if (isFeatureFlagEnabled('diagnostics')) {
-        refreshOpenDocuments(collection, context);
-      }
+      scheduleOpenDocumentsRefresh(collection, context);
     })
   );
 
   context.register(
     onDidChangeTemplateIndex(() => {
       invalidateTemplateEntryCache();
-      if (isFeatureFlagEnabled('diagnostics')) {
-        refreshOpenDocuments(collection, context);
-      }
+      scheduleOpenDocumentsRefresh(collection, context);
     })
   );
 

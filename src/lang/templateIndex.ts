@@ -4,9 +4,17 @@ import * as path from 'path';
 import type { FeatureContext } from '../features';
 
 const COLLIE_GLOB = '**/*.collie';
-const COLLIE_EXCLUDE_GLOB = '**/node_modules/**';
+const COLLIE_EXCLUDE_GLOB = '**/{node_modules,dist,build,out,coverage,.git}/**';
+const EXCLUDED_DIR_NAMES = ['node_modules', 'dist', 'build', 'out', 'coverage', '.git'];
 const TEMPLATE_ID_PATTERN = /^[A-Za-z][A-Za-z0-9._-]*$/;
 const DEFAULT_DEBOUNCE_MS = 150;
+const INDEX_CHANGE_DEBOUNCE_MS = 100;
+const RESCAN_DEBOUNCE_MS = 250;
+const CONTENT_UPDATE_SUPPRESS_MS = 250;
+const MAX_SCAN_CONCURRENCY = 8;
+const INDEX_CHANGE_KEY = 'index-change';
+const RESCAN_KEY = 'workspace-rescan';
+const UPDATE_KEY_PREFIX = 'update:';
 const textDecoder = new TextDecoder('utf-8');
 
 export interface TemplateLocation {
@@ -19,13 +27,23 @@ export interface TemplateLocation {
 
 const entriesById = new Map<string, TemplateLocation[]>();
 const entriesByFile = new Map<string, TemplateLocation[]>();
-const pendingUpdates = new Map<string, NodeJS.Timeout>();
+const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const recentContentUpdates = new Map<string, number>();
 
 const indexChangeEmitter = new EventEmitter<void>();
 export const onDidChangeTemplateIndex: Event<void> = indexChangeEmitter.event;
 
+function isExcludedPath(fsPath: string): boolean {
+  for (const name of EXCLUDED_DIR_NAMES) {
+    if (fsPath.includes(`${path.sep}${name}${path.sep}`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function isCollieUri(uri: Uri): boolean {
-  return uri.fsPath.endsWith('.collie') && !uri.fsPath.includes(`${path.sep}node_modules${path.sep}`);
+  return uri.fsPath.endsWith('.collie') && !isExcludedPath(uri.fsPath);
 }
 
 function isCollieDocument(document: TextDocument): boolean {
@@ -124,7 +142,7 @@ function setEntriesForUri(uri: Uri, entries: TemplateLocation[]): void {
   removeEntriesForUri(uri);
 
   if (entries.length === 0) {
-    indexChangeEmitter.fire();
+    scheduleIndexChange();
     return;
   }
 
@@ -137,18 +155,20 @@ function setEntriesForUri(uri: Uri, entries: TemplateLocation[]): void {
     entriesById.set(entry.id, existing);
   }
 
-  indexChangeEmitter.fire();
+  scheduleIndexChange();
 }
 
 export function clearTemplateIndex(): void {
   entriesById.clear();
   entriesByFile.clear();
-  indexChangeEmitter.fire();
+  recentContentUpdates.clear();
+  scheduleIndexChange();
 }
 
 export function removeTemplateEntries(uri: Uri): void {
   removeEntriesForUri(uri);
-  indexChangeEmitter.fire();
+  recentContentUpdates.delete(uri.toString());
+  scheduleIndexChange();
 }
 
 export function updateTemplateIndex(uri: Uri, contents: string): void {
@@ -170,13 +190,58 @@ async function updateTemplateIndexFromDisk(uri: Uri): Promise<void> {
   }
 }
 
-function cancelPendingUpdate(uri: Uri): void {
-  const key = uri.toString();
-  const timer = pendingUpdates.get(key);
-  if (timer) {
-    clearTimeout(timer);
-    pendingUpdates.delete(key);
+function scheduleDebounced(key: string, action: () => void, delayMs: number): void {
+  const existing = debounceTimers.get(key);
+  if (existing) {
+    clearTimeout(existing);
   }
+  const handle = setTimeout(() => {
+    debounceTimers.delete(key);
+    action();
+  }, delayMs);
+  debounceTimers.set(key, handle);
+}
+
+function cancelDebounced(key: string): void {
+  const existing = debounceTimers.get(key);
+  if (existing) {
+    clearTimeout(existing);
+    debounceTimers.delete(key);
+  }
+}
+
+function getUpdateKey(uri: Uri): string {
+  return `${UPDATE_KEY_PREFIX}${uri.toString()}`;
+}
+
+function cancelPendingUpdate(uri: Uri): void {
+  cancelDebounced(getUpdateKey(uri));
+  recentContentUpdates.delete(uri.toString());
+}
+
+function recordContentUpdate(uri: Uri): void {
+  recentContentUpdates.set(uri.toString(), Date.now());
+}
+
+function wasRecentlyContentUpdated(uri: Uri): boolean {
+  const key = uri.toString();
+  const lastUpdate = recentContentUpdates.get(key);
+  if (!lastUpdate) {
+    return false;
+  }
+
+  if (Date.now() - lastUpdate > CONTENT_UPDATE_SUPPRESS_MS) {
+    recentContentUpdates.delete(key);
+    return false;
+  }
+
+  return true;
+}
+
+function scheduleIndexChange(): void {
+  scheduleDebounced(INDEX_CHANGE_KEY, () => {
+    indexChangeEmitter.fire();
+  }, INDEX_CHANGE_DEBOUNCE_MS);
 }
 
 export function scheduleTemplateIndexUpdate(uri: Uri, contents?: string, debounceMs = DEFAULT_DEBOUNCE_MS): void {
@@ -184,27 +249,48 @@ export function scheduleTemplateIndexUpdate(uri: Uri, contents?: string, debounc
     return;
   }
 
-  cancelPendingUpdate(uri);
-  const key = uri.toString();
-  const timer = setTimeout(() => {
-    pendingUpdates.delete(key);
+  if (contents !== undefined) {
+    recordContentUpdate(uri);
+  }
+
+  const key = getUpdateKey(uri);
+  scheduleDebounced(key, () => {
     if (contents !== undefined) {
       updateTemplateIndex(uri, contents);
     } else {
       void updateTemplateIndexFromDisk(uri);
     }
   }, debounceMs);
-  pendingUpdates.set(key, timer);
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) {
+    return;
+  }
+
+  const cappedLimit = Math.max(1, Math.min(limit, items.length));
+  let index = 0;
+
+  const workers = Array.from({ length: cappedLimit }, async () => {
+    while (index < items.length) {
+      const current = index;
+      index += 1;
+      await task(items[current]);
+    }
+  });
+
+  await Promise.all(workers);
 }
 
 export async function scanWorkspaceTemplates(): Promise<void> {
   clearTemplateIndex();
   const files = await workspace.findFiles(COLLIE_GLOB, COLLIE_EXCLUDE_GLOB);
-  for (const uri of files) {
-    if (isCollieUri(uri)) {
-      await updateTemplateIndexFromDisk(uri);
-    }
-  }
+  const collieFiles = files.filter(isCollieUri);
+  await runWithConcurrency(collieFiles, MAX_SCAN_CONCURRENCY, updateTemplateIndexFromDisk);
 }
 
 export function getById(id: string): TemplateLocation | undefined {
@@ -253,12 +339,18 @@ export async function registerTemplateIndex(context: FeatureContext) {
 
   watcher.onDidChange(uri => {
     if (isCollieUri(uri)) {
+      if (wasRecentlyContentUpdated(uri)) {
+        return;
+      }
       scheduleTemplateIndexUpdate(uri);
     }
   });
 
   watcher.onDidCreate(uri => {
     if (isCollieUri(uri)) {
+      if (wasRecentlyContentUpdated(uri)) {
+        return;
+      }
       scheduleTemplateIndexUpdate(uri);
     }
   });
@@ -285,9 +377,16 @@ export async function registerTemplateIndex(context: FeatureContext) {
   );
 
   context.register(
-    workspace.onDidChangeWorkspaceFolders(async () => {
-      await scanWorkspaceTemplates();
-      context.logger.info('Template index rebuilt after workspace change.');
+    workspace.onDidChangeWorkspaceFolders(() => {
+      scheduleDebounced(RESCAN_KEY, () => {
+        void scanWorkspaceTemplates()
+          .then(() => {
+            context.logger.info('Template index rebuilt after workspace change.');
+          })
+          .catch(error => {
+            context.logger.error('Failed to rebuild template index after workspace change.', error);
+          });
+      }, RESCAN_DEBOUNCE_MS);
     })
   );
 
