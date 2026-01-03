@@ -65,7 +65,8 @@ function convertJsxChild(
     return createIrText(text);
   }
 
-  diagnostics.warnings.push(`Unsupported JSX node omitted: ${ts.SyntaxKind[node.kind]}`);
+  const nodeKind = (node as ts.Node).kind;
+  diagnostics.warnings.push(`Unsupported JSX node omitted: ${ts.SyntaxKind[nodeKind]}`);
   return createPlaceholderExpression('Unsupported JSX node', node, sourceFile);
 }
 
@@ -176,7 +177,8 @@ function convertJsxAttributes(
       continue;
     }
 
-    diagnostics.warnings.push(`Unsupported JSX attribute omitted: ${ts.SyntaxKind[attribute.kind]}`);
+    const attributeKind = (attribute as ts.Node).kind;
+    diagnostics.warnings.push(`Unsupported JSX attribute omitted: ${ts.SyntaxKind[attributeKind]}`);
     props.push(createPlaceholderExpression('unsupported JSX attribute', attribute, sourceFile));
   }
 

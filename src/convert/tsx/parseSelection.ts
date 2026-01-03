@@ -27,8 +27,12 @@ export function parseJsxSelection(selection: string): JsxParseResult {
     ts.ScriptKind.TSX
   );
 
-  if (sourceFile.parseDiagnostics.length > 0) {
-    const [firstDiagnostic] = sourceFile.parseDiagnostics;
+  const parseDiagnostics = (sourceFile as ts.SourceFile & {
+    parseDiagnostics?: ts.DiagnosticWithLocation[];
+  }).parseDiagnostics;
+
+  if (parseDiagnostics && parseDiagnostics.length > 0) {
+    const [firstDiagnostic] = parseDiagnostics;
     const message = ts.flattenDiagnosticMessageText(firstDiagnostic.messageText, '\n');
     throw new JsxParseError(`Unable to parse the selected JSX: ${message}`);
   }

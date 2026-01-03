@@ -152,3 +152,10 @@ function createIndent(level: number, ctx: PrinterContext) {
 
   return ctx.indentUnit.repeat(level);
 }
+
+function formatInlineText(node: IrText, ctx: PrinterContext): string {
+  if (!node.value) {
+    return ctx.options.spaceAroundPipe ? '| ' : '|';
+  }
+  return ctx.options.spaceAroundPipe ? `| ${node.value}` : `|${node.value}`;
+}

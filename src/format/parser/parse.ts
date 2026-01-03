@@ -25,7 +25,13 @@ interface ConditionalBranchContext {
   children: Node[];
 }
 
-type ParentNode = RootNode | ElementNode | ConditionalBranchContext;
+interface ForLoopContext {
+  kind: 'ForLoop';
+  owner: ForLoopNode;
+  children: Node[];
+}
+
+type ParentNode = RootNode | ElementNode | ConditionalBranchContext | ForLoopContext;
 
 interface StackItem {
   node: ParentNode;
@@ -302,7 +308,7 @@ export function parse(source: string): ParseResult {
         continue;
       }
       parent.children.push(forLoop);
-      stack.push({ node: forLoop, level });
+      stack.push({ node: createForLoopContext(forLoop), level });
       continue;
     }
 
@@ -697,6 +703,14 @@ function createConditionalBranchContext(
     owner,
     branch,
     children: branch.body
+  };
+}
+
+function createForLoopContext(owner: ForLoopNode): ForLoopContext {
+  return {
+    kind: 'ForLoop',
+    owner,
+    children: owner.body
   };
 }
 
