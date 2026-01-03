@@ -7,6 +7,12 @@ export interface CollieWriteResult {
   wasCreated: boolean;
 }
 
+export interface CollieTemplateMatch {
+  id: string;
+  idLine: number;
+  content: string;
+}
+
 const textDecoder = new TextDecoder('utf-8');
 const textEncoder = new TextEncoder();
 
@@ -17,6 +23,74 @@ async function fileExists(uri: Uri): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function normalizeForMatch(value: string): string {
+  return value.replace(/\s+/g, '');
+}
+
+function parseTemplateBlocks(contents: string): CollieTemplateMatch[] {
+  const lines = contents.split(/\r?\n/);
+  const matches: CollieTemplateMatch[] = [];
+
+  const idLines: Array<{ id: string; line: number }> = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const match = line.match(/^\s*#id\s+([^\s]+)/);
+    if (!match) {
+      continue;
+    }
+    const id = match[1].trim();
+    if (!id) {
+      continue;
+    }
+    idLines.push({ id, line: i });
+  }
+
+  for (let i = 0; i < idLines.length; i += 1) {
+    const entry = idLines[i];
+    const next = idLines[i + 1];
+    const contentStart = entry.line + 1;
+    const contentEnd = next ? next.line : lines.length;
+    const content = lines.slice(contentStart, contentEnd).join('\n').trimEnd();
+    matches.push({ id: entry.id, idLine: entry.line, content });
+  }
+
+  return matches;
+}
+
+export async function findMatchingTemplates(
+  uri: Uri,
+  collieText: string
+): Promise<CollieTemplateMatch[]> {
+  if (!(await fileExists(uri))) {
+    return [];
+  }
+
+  const bytes = await workspace.fs.readFile(uri);
+  const contents = textDecoder.decode(bytes);
+  const trimmedSelection = collieText.trim();
+  if (!trimmedSelection) {
+    return [];
+  }
+  const normalizedSelection = normalizeForMatch(trimmedSelection);
+
+  const matches: CollieTemplateMatch[] = [];
+  for (const block of parseTemplateBlocks(contents)) {
+    const trimmedBlock = block.content.trim();
+    if (!trimmedBlock) {
+      continue;
+    }
+    if (trimmedBlock === trimmedSelection) {
+      matches.push(block);
+      continue;
+    }
+    if (normalizeForMatch(trimmedBlock) === normalizedSelection) {
+      matches.push(block);
+    }
+  }
+
+  return matches;
 }
 
 function countNewlines(text: string): number {

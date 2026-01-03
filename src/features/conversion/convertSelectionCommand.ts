@@ -19,7 +19,7 @@ import { convertJsxNodesToIr } from '../../convert/tsx/jsxToIr';
 import { JsxParseError, parseJsxSelection } from '../../convert/tsx/parseSelection';
 import { listByFile, listIds } from '../../lang/templateIndex';
 import { warnIfMissingConfig, warnIfMissingTooling } from '../config/warnings';
-import { writeTemplateBlock } from './collieFileWriter';
+import { findMatchingTemplates, writeTemplateBlock } from './collieFileWriter';
 import { ensureCollieImport } from './imports';
 import { deriveTargetFileBase, deriveTemplateId } from './templateId';
 
@@ -100,7 +100,47 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
       channel,
       extractedSelection
     );
+
     const targetUri = suggestCollieFileUri(selection.document);
+
+    if (targetUri) {
+      const matches = await findMatchingTemplates(targetUri, collieText);
+      if (matches.length > 0) {
+        const pickItems: Array<{ label: string; description?: string; templateId?: string }> = [
+          { label: 'Create new template' },
+          ...matches.map(match => ({
+            label: `Reuse existing id: ${match.id}`,
+            description: `${basename(targetUri.fsPath)}:${match.idLine + 1}`,
+            templateId: match.id
+          }))
+        ];
+
+        const picked = await window.showQuickPick(pickItems, {
+          placeHolder: 'Found a matching template. Reuse an existing id or create a new template.'
+        });
+
+        if (!picked) {
+          return;
+        }
+
+        if (picked.templateId) {
+          const applied = await applyTsxEdits(selection, picked.templateId);
+          if (applied) {
+            if (warnings.length > 0) {
+              window.showWarningMessage(
+                `Reused existing template id "${picked.templateId}". JSX parsed with warnings; see the Collie Conversion output.`
+              );
+            } else {
+              window.showInformationMessage(`Reused existing template id "${picked.templateId}".`);
+            }
+          } else {
+            window.showWarningMessage(`Reused template id "${picked.templateId}" but could not update the TSX selection.`);
+          }
+          return;
+        }
+      }
+    }
+
     const existingIds = new Set(listIds());
     if (targetUri) {
       for (const entry of listByFile(targetUri)) {
