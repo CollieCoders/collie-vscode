@@ -110,7 +110,7 @@ function formatProps(props: readonly (IrProp | IrExpression)[], ctx: PrinterCont
     parts.push(formatExpressionPayload(prop.expressionText));
   }
 
-  return ' ' + parts.join(' ');
+  return `(${parts.join(' ')})`;
 }
 
 function getInlineChild(children: readonly IrNode[], ctx: PrinterContext): string | undefined {

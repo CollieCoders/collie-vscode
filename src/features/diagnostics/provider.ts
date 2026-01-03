@@ -439,11 +439,19 @@ async function applyDiagnostics(
 
   const diagnostics: VSDiagnostic[] = [];
   const config = await resolveCollieConfigForDocument(document, context.logger);
+  const dialect = config.parsed.dialect?.toLowerCase();
+  const isNonVanillaDialect = Boolean(dialect && dialect !== 'html' && dialect !== 'vanilla');
+  const reactIntegrationEnabled =
+    workspace.getConfiguration().get<boolean>('collie.props.reactIntegration.enabled', false) ||
+    config.parsed.propsReactIntegrationEnabled === true;
+  const shouldCheckHtmlPlaceholders = !reactIntegrationEnabled && !isNonVanillaDialect;
 
   if (parsed) {
     diagnostics.push(...collectParserDiagnostics(document, parsed));
     diagnostics.push(...await collectIdCollisionDiagnostics(document));
-    diagnostics.push(...collectMissingHtmlPlaceholderDiagnostics(document, parsed));
+    if (shouldCheckHtmlPlaceholders) {
+      diagnostics.push(...collectMissingHtmlPlaceholderDiagnostics(document, parsed));
+    }
   }
 
   diagnostics.push(...collectUnknownDirectiveDiagnostics(document));
