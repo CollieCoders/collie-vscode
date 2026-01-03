@@ -17,6 +17,8 @@ import type { FeatureContext } from '..';
 import { getTemplateIdEntries } from '../../lang/cache';
 
 const ID_DIRECTIVE_PATTERN = /^(?:#|)id(?:\s+|:\s*|=\s*)(.+)$/i;
+const ID_DIRECTIVE_WITH_VALUE_PATTERN = /^(\s*(?:#|)id(?:\s+|:\s*|=\s*))(.*)$/i;
+const TEMPLATE_ID_PATTERN = /^[A-Za-z][A-Za-z0-9._-]*$/;
 const DEFAULT_PROP_TYPE = 'unknown';
 
 type DiagnosticFix = {
@@ -269,6 +271,34 @@ function collectFixEdits(document: TextDocument, diagnostics: Diagnostic[]): Dia
   return filtered;
 }
 
+function findNearestIdDirective(
+  document: TextDocument,
+  startLine: number
+): { line: number; range: Range; currentId: string } | null {
+  for (let lineNumber = startLine; lineNumber >= 0; lineNumber -= 1) {
+    const lineText = document.lineAt(lineNumber).text;
+    const match = ID_DIRECTIVE_WITH_VALUE_PATTERN.exec(lineText);
+    if (!match) {
+      continue;
+    }
+
+    const prefix = match[1] ?? '';
+    const value = match[2] ?? '';
+    const trimmed = value.trim();
+    const valueOffset = trimmed ? value.indexOf(trimmed) : 0;
+    const startCharacter = prefix.length + Math.max(valueOffset, 0);
+    const endCharacter = trimmed ? startCharacter + trimmed.length : startCharacter;
+
+    return {
+      line: lineNumber,
+      range: new Range(lineNumber, startCharacter, lineNumber, endCharacter),
+      currentId: trimmed
+    };
+  }
+
+  return null;
+}
+
 class CollieIdCodeActionProvider implements CodeActionProvider {
   provideCodeActions(document: TextDocument, range: Range): CodeAction[] {
     const actions: CodeAction[] = [];
@@ -281,7 +311,9 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
 
     for (const diagnostic of collisionDiagnostics) {
       // Extract the template ID from the diagnostic message
-      const match = diagnostic.message.match(/Duplicate Collie template id "([^"]+)"/);
+      const match =
+        diagnostic.message.match(/Duplicate Collie template id "([^"]+)"/) ??
+        diagnostic.message.match(/Duplicate #id "([^"]+)"/);
       if (!match) {
         continue;
       }
@@ -413,20 +445,28 @@ export function registerDiagnosticsCodeActions(context: FeatureContext) {
     )
   );
 
-  // Register the rename command
+    // Register the rename command
   context.register(
     commands.registerCommand(
       'collie.renameTemplateId',
       async (document: TextDocument, range: Range, currentId: string) => {
+        const activeLine = range?.start.line ?? window.activeTextEditor?.selection.active.line ?? 0;
+        const target = findNearestIdDirective(document, activeLine);
+        if (!target) {
+          window.showWarningMessage('No #id directive found above the cursor.');
+          return;
+        }
+
+        const initialValue = currentId || target.currentId;
         const newId = await window.showInputBox({
           prompt: 'Enter new template ID',
-          value: `${currentId}2`,
+          value: initialValue ? `${initialValue}2` : '',
           validateInput: (value) => {
             if (!value || !value.trim()) {
               return 'ID cannot be empty';
             }
-            if (/\s/.test(value)) {
-              return 'ID cannot contain whitespace';
+            if (!TEMPLATE_ID_PATTERN.test(value)) {
+              return 'ID must start with a letter and contain only letters, numbers, ".", "_", or "-".';
             }
             return null;
           }
@@ -437,25 +477,7 @@ export function registerDiagnosticsCodeActions(context: FeatureContext) {
         }
 
         const edit = new WorkspaceEdit();
-
-        // Check if there's an explicit ID directive
-        const firstLine = document.lineAt(0);
-        const idDirectiveMatch = /^(#?id)(?:\s+|:\s*|=\s*)(.+)$/i.exec(firstLine.text.trim());
-
-        if (idDirectiveMatch) {
-          // Replace existing ID directive value
-          const valueStart = firstLine.text.indexOf(idDirectiveMatch[2]);
-          const valueRange = new Range(
-            0,
-            valueStart,
-            0,
-            valueStart + idDirectiveMatch[2].length
-          );
-          edit.replace(document.uri, valueRange, newId);
-        } else {
-          // Insert new ID directive at the top
-          edit.insert(document.uri, document.positionAt(0), `#id ${newId}\n\n`);
-        }
+        edit.replace(document.uri, target.range, newId);
 
         await workspace.applyEdit(edit);
       }

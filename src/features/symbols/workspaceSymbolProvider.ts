@@ -1,18 +1,8 @@
-import { languages, Location, Position, Range, SymbolInformation, SymbolKind, type CancellationToken } from 'vscode';
+import { languages, Location, SymbolInformation, SymbolKind, type CancellationToken } from 'vscode';
 import * as path from 'path';
 import type { FeatureContext } from '..';
-import { getAllTemplateIds } from '../../lang/cache';
+import { getById, listIds } from '../../lang/templateIndex';
 import { isFeatureFlagEnabled } from '../featureFlags';
-
-/**
- * Converts a SourceSpan to a VS Code Range.
- */
-function sourceSpanToRange(span: { start: { line: number; col: number }; end: { line: number; col: number } }): Range {
-  return new Range(
-    new Position(span.start.line, span.start.col),
-    new Position(span.end.line, span.end.col)
-  );
-}
 
 /**
  * Provides workspace symbols for Collie templates, allowing users to search
@@ -28,44 +18,23 @@ function provideCollieWorkspaceSymbols(
   }
 
   try {
-    const templateIds = getAllTemplateIds();
     const symbols: SymbolInformation[] = [];
-
-    // Normalize query for case-insensitive filtering
+    const templateIds = listIds();
     const normalizedQuery = query.toLowerCase().trim();
-
-    for (const [logicalId, entries] of templateIds.entries()) {
-      // Filter by query if provided
+    for (const logicalId of templateIds) {
       if (normalizedQuery && !logicalId.toLowerCase().includes(normalizedQuery)) {
         continue;
       }
 
-      for (const entry of entries) {
-        // Determine the location to jump to
-        let location: Location;
-
-        if (entry.idSpan) {
-          // Jump to explicit ID directive
-          const range = sourceSpanToRange(entry.idSpan);
-          location = new Location(entry.uri, range);
-        } else {
-          // Jump to top of file for implicit ID
-          location = new Location(entry.uri, new Position(0, 0));
-        }
-
-        // Create symbol information
-        // Using SymbolKind.Class for templates (could also be Function or Object)
-        const containerName = path.basename(entry.uri.fsPath);
-
-        const symbol = new SymbolInformation(
-          entry.id,
-          SymbolKind.Class,
-          containerName,
-          location
-        );
-
-        symbols.push(symbol);
+      const entry = getById(logicalId);
+      if (!entry) {
+        continue;
       }
+
+      const location = new Location(entry.uri, entry.idRange);
+      const containerName = path.basename(entry.uri.fsPath);
+      const symbol = new SymbolInformation(logicalId, SymbolKind.Function, containerName, location);
+      symbols.push(symbol);
     }
 
     return symbols;
