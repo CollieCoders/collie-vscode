@@ -19,7 +19,7 @@ import { convertJsxNodesToIr } from '../../convert/tsx/jsxToIr';
 import { JsxParseError, parseJsxSelection } from '../../convert/tsx/parseSelection';
 import { listByFile, listIds } from '../../lang/templateIndex';
 import { warnIfMissingConfig, warnIfMissingTooling } from '../config/warnings';
-import { findMatchingTemplates, writeTemplateBlock } from './collieFileWriter';
+import { appendToTemplateBlock, findMatchingTemplates, listTemplateBlocks, writeTemplateBlock } from './collieFileWriter';
 import { ensureCollieImport } from './imports';
 import { deriveTargetFileBase, deriveTemplateId } from './templateId';
 
@@ -103,9 +103,11 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
 
     const targetUri = suggestCollieFileUri(selection.document);
 
+    let hasMatchingTemplates = false;
     if (targetUri) {
       const matches = await findMatchingTemplates(targetUri, collieText);
-      if (matches.length > 0) {
+      hasMatchingTemplates = matches.length > 0;
+      if (hasMatchingTemplates) {
         const pickItems: Array<{ label: string; description?: string; templateId?: string }> = [
           { label: 'Create new template' },
           ...matches.map(match => ({
@@ -135,6 +137,61 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
             }
           } else {
             window.showWarningMessage(`Reused template id "${picked.templateId}" but could not update the TSX selection.`);
+          }
+          return;
+        }
+      }
+    }
+
+    if (targetUri && !hasMatchingTemplates) {
+      const templateBlocks = await listTemplateBlocks(targetUri);
+      if (templateBlocks.length > 0) {
+        const pickItems: Array<{ label: string; description?: string; templateId?: string }> = [
+          { label: 'Create new template' },
+          ...templateBlocks.map(block => ({
+            label: `Append to existing template: ${block.id}`,
+            description: `${basename(targetUri.fsPath)}:${block.idLine + 1}`,
+            templateId: block.id
+          }))
+        ];
+
+        const picked = await window.showQuickPick(pickItems, {
+          placeHolder: 'Append to an existing template or create a new one.'
+        });
+
+        if (!picked) {
+          return;
+        }
+
+        if (picked.templateId) {
+          const appended = await appendToTemplateBlock(
+            targetUri,
+            picked.templateId,
+            collieText,
+            selection.document.eol === EndOfLine.CRLF ? '\r\n' : '\n'
+          );
+
+          if (!appended) {
+            window.showWarningMessage(`Could not append to template id "${picked.templateId}".`);
+            return;
+          }
+
+          await openCollieDocumentAt(appended.uri, appended.idLine);
+          const applied = await applyTsxEdits(selection, picked.templateId);
+          const filename = basename(appended.uri.fsPath);
+          const insertionMessage = `Appended to ${filename} template "${picked.templateId}".`;
+          if (applied) {
+            if (warnings.length > 0) {
+              window.showWarningMessage(
+                `${insertionMessage} JSX parsed with warnings; see the Collie Conversion output.`
+              );
+            } else {
+              window.showInformationMessage(insertionMessage);
+            }
+          } else {
+            window.showWarningMessage(
+              `Appended to ${filename} but could not update the TSX selection.`
+            );
           }
           return;
         }
