@@ -1061,6 +1061,7 @@ function parseElement(
   let rest = line.slice(raw.length);
   let inlineText: TextNode | null = null;
   let consumed = raw.length;
+  let sawAttributes = false;
 
   while (rest.length > 0) {
     // consume whitespace
@@ -1071,6 +1072,36 @@ function parseElement(
     }
 
     if (rest.length === 0) break;
+
+    if (rest.startsWith('(')) {
+      if (sawAttributes) {
+        pushDiag(
+          diagnostics,
+          'COLLIE004',
+          'Element lines may only contain one attribute group.',
+          lineNumber,
+          column + consumed,
+          lineOffset
+        );
+        return null;
+      }
+      const closeIndex = findMatchingParen(rest);
+      if (closeIndex === -1) {
+        pushDiag(
+          diagnostics,
+          'COLLIE004',
+          'Attribute group must be closed with ).',
+          lineNumber,
+          column + consumed,
+          lineOffset
+        );
+        return null;
+      }
+      rest = rest.slice(closeIndex + 1);
+      consumed += closeIndex + 1;
+      sawAttributes = true;
+      continue;
+    }
 
     // inline text
     if (rest.startsWith('|')) {
@@ -1143,6 +1174,52 @@ function parseElement(
   }
 
   return element;
+}
+
+function findMatchingParen(source: string): number {
+  let depth = 0;
+  let quote: '"' | "'" | '`' | null = null;
+  let escapeNext = false;
+
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+
+    if (quote) {
+      if (ch === '\\') {
+        escapeNext = true;
+        continue;
+      }
+      if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      continue;
+    }
+
+    if (ch === '(') {
+      depth += 1;
+      continue;
+    }
+
+    if (ch === ')') {
+      depth -= 1;
+      if (depth === 0) {
+        return i;
+      }
+      continue;
+    }
+  }
+
+  return -1;
 }
 
 function pushDiag(
