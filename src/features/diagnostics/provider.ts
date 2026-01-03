@@ -4,6 +4,7 @@ import {
   languages,
   Position,
   Range,
+  Uri,
   workspace
 } from 'vscode';
 import type { TextDocument } from 'vscode';
@@ -27,11 +28,32 @@ const REFRESH_DEBOUNCE_MS = 250;
 const REFRESH_OPEN_DOCS_KEY = '__collie_refresh_open_docs__';
 const COLLIE_GLOB = '**/*.collie';
 const COLLIE_EXCLUDE_GLOB = '**/{node_modules,dist,build,out,coverage,.git}/**';
+const FRAMEWORK_CONFIG_FILES = [
+  'vite.config.js',
+  'vite.config.ts',
+  'vite.config.mjs',
+  'vite.config.cjs',
+  'vite.config.mts',
+  'next.config.js',
+  'next.config.ts',
+  'next.config.mjs',
+  'next.config.cjs',
+  'angular.json'
+];
+const FRAMEWORK_PACKAGE_MARKERS = new Set([
+  'react',
+  'react-dom',
+  'next',
+  'vite',
+  '@angular/core',
+  '@angular/cli'
+]);
 const pendingDiagnostics = new Map<string, ReturnType<typeof setTimeout>>();
 let templateIndexVersion = 0;
 let cachedTemplateEntriesVersion = -1;
 let cachedTemplateEntries: Map<string, TemplateLocation[]> = new Map();
 let cachedTemplateEntriesPromise: Promise<Map<string, TemplateLocation[]>> | null = null;
+const frameworkDetectionCache = new Map<string, boolean>();
 
 function invalidateTemplateEntryCache(): void {
   templateIndexVersion += 1;
@@ -69,6 +91,62 @@ function convertParserDiagnostic(document: TextDocument, diagnostic: ParserDiagn
   vscodeDiag.code = diagnostic.code;
   vscodeDiag.source = 'collie';
   return vscodeDiag;
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await workspace.fs.stat(Uri.file(filePath));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function isFrameworkProject(document: TextDocument): Promise<boolean> {
+  const workspaceFolder = workspace.getWorkspaceFolder(document.uri);
+  if (!workspaceFolder) {
+    return false;
+  }
+
+  const cacheKey = workspaceFolder.uri.fsPath;
+  const cached = frameworkDetectionCache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const root = workspaceFolder.uri.fsPath;
+  for (const configFile of FRAMEWORK_CONFIG_FILES) {
+    const candidate = path.join(root, configFile);
+    if (await fileExists(candidate)) {
+      frameworkDetectionCache.set(cacheKey, true);
+      return true;
+    }
+  }
+
+  const packageJsonPath = path.join(root, 'package.json');
+  if (await fileExists(packageJsonPath)) {
+    try {
+      const data = await workspace.fs.readFile(Uri.file(packageJsonPath));
+      const text = new TextDecoder('utf-8').decode(data);
+      const pkg = JSON.parse(text) as Record<string, unknown>;
+      const deps = {
+        ...(pkg.dependencies as Record<string, string> | undefined),
+        ...(pkg.devDependencies as Record<string, string> | undefined),
+        ...(pkg.peerDependencies as Record<string, string> | undefined)
+      };
+      for (const marker of FRAMEWORK_PACKAGE_MARKERS) {
+        if (deps && marker in deps) {
+          frameworkDetectionCache.set(cacheKey, true);
+          return true;
+        }
+      }
+    } catch {
+      // Ignore package.json parse errors and fall back to vanilla behavior.
+    }
+  }
+
+  frameworkDetectionCache.set(cacheKey, false);
+  return false;
 }
 
 function mapSeverity(severity: ParserDiagnostic['severity']): DiagnosticSeverity {
@@ -444,7 +522,8 @@ async function applyDiagnostics(
   const reactIntegrationEnabled =
     workspace.getConfiguration().get<boolean>('collie.props.reactIntegration.enabled', false) ||
     config.parsed.propsReactIntegrationEnabled === true;
-  const shouldCheckHtmlPlaceholders = !reactIntegrationEnabled && !isNonVanillaDialect;
+  const frameworkProject = await isFrameworkProject(document);
+  const shouldCheckHtmlPlaceholders = !reactIntegrationEnabled && !isNonVanillaDialect && !frameworkProject;
 
   if (parsed) {
     diagnostics.push(...collectParserDiagnostics(document, parsed));
