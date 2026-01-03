@@ -318,8 +318,128 @@ async function applyTsxEdits(
   );
 
   const edit = new WorkspaceEdit();
-  edit.replace(document.uri, selection.selection, `<Collie id="${templateId}" />`);
+  const replaceRange = getReplacementRange(selection);
+  edit.replace(document.uri, replaceRange, `<Collie id="${templateId}" />`);
   ensureCollieImport(document, sourceFile, edit);
 
   return workspace.applyEdit(edit);
+}
+
+function getReplacementRange(selection: SelectionContext): Range {
+  const text = selection.text;
+  const fragment = findFragmentBounds(text);
+  if (!fragment) {
+    return selection.selection;
+  }
+
+  const selectionStartOffset = selection.document.offsetAt(selection.selection.start);
+  const startOffset = selectionStartOffset + fragment.innerStart;
+  const endOffset = selectionStartOffset + fragment.innerEnd;
+
+  if (startOffset > endOffset) {
+    return selection.selection;
+  }
+
+  return new Range(
+    selection.document.positionAt(startOffset),
+    selection.document.positionAt(endOffset)
+  );
+}
+
+interface FragmentBounds {
+  innerStart: number;
+  innerEnd: number;
+}
+
+function findFragmentBounds(text: string): FragmentBounds | null {
+  const lead = skipLeadingTrivia(text, 0);
+  const hasOpen = text.startsWith('<>', lead);
+  const openEnd = hasOpen ? lead + 2 : 0;
+  const innerStart = hasOpen ? skipLeadingTrivia(text, openEnd) : 0;
+
+  const trail = skipTrailingTrivia(text, text.length);
+  const hasClose = trail >= 3 && text.slice(trail - 3, trail) === '</>';
+  const closeStart = hasClose ? trail - 3 : text.length;
+  const innerEnd = hasClose ? skipTrailingTrivia(text, closeStart) : text.length;
+
+  if (!hasOpen && !hasClose) {
+    return null;
+  }
+
+  return { innerStart, innerEnd };
+}
+
+function skipLeadingTrivia(text: string, start: number): number {
+  let index = start;
+  while (index < text.length) {
+    const char = text[index];
+    if (isWhitespace(char)) {
+      index += 1;
+      continue;
+    }
+    if (text.startsWith('//', index)) {
+      const newline = text.indexOf('\n', index + 2);
+      if (newline === -1) {
+        return text.length;
+      }
+      index = newline + 1;
+      continue;
+    }
+    if (text.startsWith('/*', index)) {
+      const end = text.indexOf('*/', index + 2);
+      if (end === -1) {
+        return text.length;
+      }
+      index = end + 2;
+      continue;
+    }
+    if (text.startsWith('{/*', index)) {
+      const end = text.indexOf('*/}', index + 3);
+      if (end === -1) {
+        return text.length;
+      }
+      index = end + 3;
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+
+function skipTrailingTrivia(text: string, end: number): number {
+  let index = end;
+  while (index > 0) {
+    const char = text[index - 1];
+    if (isWhitespace(char)) {
+      index -= 1;
+      continue;
+    }
+    if (index >= 3 && text.slice(index - 3, index) === '*/}') {
+      const start = text.lastIndexOf('{/*', index - 3);
+      if (start === -1) {
+        break;
+      }
+      index = start;
+      continue;
+    }
+    if (index >= 2 && text.slice(index - 2, index) === '*/') {
+      const start = text.lastIndexOf('/*', index - 2);
+      if (start === -1) {
+        break;
+      }
+      index = start;
+      continue;
+    }
+    if (index >= 2 && text.slice(index - 2, index) === '//') {
+      const lineStart = text.lastIndexOf('\n', index - 3);
+      index = lineStart === -1 ? 0 : lineStart + 1;
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+
+function isWhitespace(char: string): boolean {
+  return char === ' ' || char === '\n' || char === '\r' || char === '\t';
 }
