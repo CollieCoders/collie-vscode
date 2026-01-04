@@ -345,7 +345,7 @@ div.user-panel
 
 ### Status
 
-0% Complete
+100% Complete
 
 ### Context
 

@@ -89,7 +89,7 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
     const parseResult = parseJsxSelection(selection.text);
     const conversion = convertJsxNodesToIr(parseResult.rootNodes, parseResult.sourceFile);
     const collieText = printCollieDocument(conversion.nodes);
-    const propNames = collectJsxExpressionIdentifiers(parseResult.rootNodes);
+    const propNames = collectIdentifiersFromIrNodes(conversion.nodes);
     const warnings = conversion.diagnostics.warnings;
     const extractedSelection = parseResult.selectionText !== selection.text;
     logSelection(
@@ -449,19 +449,50 @@ function buildCollieComponentReplacement(templateId: string, propNames: string[]
   return `<Collie id="${templateId}" ${props} />`;
 }
 
-function collectJsxExpressionIdentifiers(nodes: readonly ts.JsxChild[]): string[] {
+function collectIdentifiersFromIrNodes(nodes: readonly IrNode[]): string[] {
   const names = new Set<string>();
 
-  const visit = (node: ts.Node): void => {
-    if (ts.isJsxExpression(node)) {
-      if (node.expression) {
-        collectIdentifiersFromExpression(node.expression, names);
+  const visit = (node: IrNode): void => {
+    switch (node.kind) {
+      case 'element':
+        for (const prop of node.props) {
+          if (prop.kind === 'prop') {
+            if (prop.value) {
+              collectIdentifiersFromExpressionText(prop.value, names);
+            }
+          } else {
+            collectIdentifiersFromExpressionText(prop.expressionText, names);
+          }
+        }
+        for (const child of node.children) {
+          visit(child);
+        }
+        break;
+      case 'text':
+        break;
+      case 'expression':
+        collectIdentifiersFromExpressionText(node.expressionText, names);
+        break;
+      case 'fragment':
+        for (const child of node.children) {
+          visit(child);
+        }
+        break;
+      case 'conditional':
+        for (const branch of node.branches) {
+          if (branch.test) {
+            collectIdentifiersFromExpressionText(branch.test, names);
+          }
+          for (const child of branch.children) {
+            visit(child);
+          }
+        }
+        break;
+      default: {
+        const exhaustive: never = node;
+        throw new Error(`Unsupported IR node: ${(exhaustive as IrNode).kind}`);
       }
-    } else if (ts.isJsxSpreadAttribute(node)) {
-      collectIdentifiersFromExpression(node.expression, names);
     }
-
-    ts.forEachChild(node, visit);
   };
 
   for (const node of nodes) {
@@ -469,6 +500,48 @@ function collectJsxExpressionIdentifiers(nodes: readonly ts.JsxChild[]): string[
   }
 
   return Array.from(names);
+}
+
+function collectIdentifiersFromExpressionText(expressionText: string, names: Set<string>): void {
+  const normalized = normalizeExpressionText(expressionText);
+  if (!normalized) {
+    return;
+  }
+
+  const sourceFile = ts.createSourceFile(
+    '__collie_expr__.ts',
+    `const __collie_expr__ = (${normalized});`,
+    ts.ScriptTarget.Latest,
+    true
+  );
+
+  const statement = sourceFile.statements[0];
+  if (!statement || !ts.isVariableStatement(statement)) {
+    return;
+  }
+  const declaration = statement.declarationList.declarations[0];
+  if (!declaration || !declaration.initializer) {
+    return;
+  }
+
+  collectIdentifiersFromExpression(declaration.initializer, names);
+}
+
+function normalizeExpressionText(expressionText: string): string | null {
+  let trimmed = expressionText.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
+
+  if (trimmed.startsWith('...')) {
+    trimmed = trimmed.slice(3).trim();
+  }
+
+  return trimmed || null;
 }
 
 function collectIdentifiersFromExpression(expression: ts.Expression, names: Set<string>): void {
