@@ -1,5 +1,8 @@
 # Collie VS Code v5 Plan — Conversion, Writing, and Diagnostics
 
+⚠️ This plan must be implemented in conjunction with `./risk-register.md`.
+If there is a conflict, the risk register takes precedence.
+
 > Scope: **`collie-vscode` repo only**
 > Focus: **TSX → Collie conversion**, template block writing, and diagnostics alignment
 > Explicitly excludes: Collie compiler changes, runtime changes, publishing, release automation
