@@ -85,7 +85,7 @@ No “append” option should remain in the command flow.
 
 ### Status
 
-0% Complete
+100% Complete
 
 ### Context
 

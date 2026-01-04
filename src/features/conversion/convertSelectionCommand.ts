@@ -12,12 +12,12 @@ import {
   WorkspaceEdit,
   EndOfLine
 } from 'vscode';
+import { TextDecoder } from 'util';
 import type { FeatureContext } from '..';
 import type { IrNode } from '../../convert/ir/nodes';
 import { printCollieDocument } from '../../convert/collie/print';
 import { convertJsxNodesToIr } from '../../convert/tsx/jsxToIr';
 import { JsxParseError, parseJsxSelection } from '../../convert/tsx/parseSelection';
-import { listByFile, listIds } from '../../lang/templateIndex';
 import { warnIfMissingConfig, warnIfMissingTooling } from '../config/warnings';
 import { writeTemplateBlock } from './collieFileWriter';
 import { ensureCollieImport } from './imports';
@@ -25,6 +25,7 @@ import { deriveTargetFileBase, deriveTemplateId } from './templateId';
 
 const SUPPORTED_LANGUAGE_IDS = new Set(['typescriptreact', 'javascriptreact']);
 const OUTPUT_CHANNEL_NAME = 'Collie Conversion';
+const textDecoder = new TextDecoder('utf-8');
 
 interface SelectionContext {
   readonly document: TextDocument;
@@ -104,12 +105,7 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
 
     const targetUri = suggestCollieFileUri(selection.document);
 
-    const existingIds = new Set(listIds());
-    if (targetUri) {
-      for (const entry of listByFile(targetUri)) {
-        existingIds.add(entry.id);
-      }
-    }
+    const existingIds = await collectExistingTemplateIds(targetUri);
     const templateId = deriveTemplateId(selection.document, selection.selection, existingIds);
     const created = await deliverCollieOutput(
       selection.document,
@@ -272,6 +268,33 @@ function suggestCollieFileUri(document: TextDocument): Uri | undefined {
   const dir = dirname(fsPath);
   const base = deriveTargetFileBase(document);
   return Uri.file(join(dir, `${base}.collie`));
+}
+
+async function collectExistingTemplateIds(targetUri: Uri | undefined): Promise<Set<string>> {
+  const ids = new Set<string>();
+  if (!targetUri) {
+    return ids;
+  }
+
+  try {
+    const bytes = await workspace.fs.readFile(targetUri);
+    const contents = textDecoder.decode(bytes);
+    const lines = contents.split(/\r?\n/);
+    for (const line of lines) {
+      const match = line.match(/^\s*#id\s+([^\s]+)/);
+      if (!match) {
+        continue;
+      }
+      const id = match[1].trim();
+      if (id) {
+        ids.add(id);
+      }
+    }
+  } catch {
+    return ids;
+  }
+
+  return ids;
 }
 
 async function applyTsxEdits(
