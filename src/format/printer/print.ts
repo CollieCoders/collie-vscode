@@ -45,6 +45,14 @@ export function print(root: RootNode, options: PrintOptions = {}): string {
 
   const lines: string[] = [];
 
+  const idValue = root.rawId ?? root.id;
+  if (idValue) {
+    lines.push(`#id ${idValue}`);
+    if (root.props || root.classAliases || root.children.length) {
+      lines.push('');
+    }
+  }
+
   if (root.props) {
     lines.push(...printProps(root.props, ctx));
     if (root.classAliases || root.children.length) {

@@ -19,9 +19,10 @@ const DIALECT_TOKEN_PATTERNS = [
   { regex: /@else\s+if\b/g, replacement: '@elseIf' }
 ];
 
-const PROP_ACCESS_PATTERNS = [
-  /\bprops\??\.([A-Za-z_][A-Za-z0-9_]*)/g,
-  /\bprops\[['"]([^'"\\]+)['"]\]/g
+const BARE_PROP_PATTERNS = [
+  /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g,
+  /(?<!\{)\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}(?!\})/g,
+  /^[ \t]*=\s*([A-Za-z_][A-Za-z0-9_]*)\b/gm
 ];
 
 function rangeFromIndex(document: TextDocument, start: number, length: number): Range {
@@ -84,8 +85,8 @@ function collectPropUsageDiagnostics(document: TextDocument, parsed: ParsedDocum
   const text = document.getText();
   const seen = new Set<string>();
 
-  for (const pattern of PROP_ACCESS_PATTERNS) {
-    const regex = new RegExp(pattern.source, 'g');
+  for (const pattern of BARE_PROP_PATTERNS) {
+    const regex = new RegExp(pattern.source, pattern.flags);
     let match: RegExpExecArray | null;
     while ((match = regex.exec(text)) !== null) {
       const name = match[1];

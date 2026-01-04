@@ -23,6 +23,7 @@ interface TemplateBlockRange extends CollieTemplateBlock {
   contentEndLine: number;
 }
 
+const PROP_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const textDecoder = new TextDecoder('utf-8');
 const textEncoder = new TextEncoder();
 
@@ -185,19 +186,52 @@ function resolveEol(existingText: string, fallback: string): string {
   return existingText.includes('\r\n') ? '\r\n' : fallback;
 }
 
-function buildTemplateBlock(templateId: string, collieText: string, eol: string): string {
-  const body = collieText.trimEnd();
-  if (!body) {
-    return `#id ${templateId}`;
+function normalizePropNames(names: Iterable<string>): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const name of names) {
+    const trimmed = name.trim();
+    if (!trimmed || !PROP_NAME_PATTERN.test(trimmed) || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    normalized.push(trimmed);
   }
-  return `#id ${templateId}${eol}${eol}${body}`;
+  return normalized;
+}
+
+function buildPropsBlock(propNames: string[], eol: string): string {
+  if (propNames.length === 0) {
+    return '';
+  }
+  const lines = ['props', ...propNames.map(name => `  ${name}: any`)];
+  return lines.join(eol);
+}
+
+function buildTemplateBlock(
+  templateId: string,
+  collieText: string,
+  eol: string,
+  propNames: string[]
+): string {
+  const body = collieText.trimEnd();
+  const propsBlock = buildPropsBlock(propNames, eol);
+  const parts: string[] = [`#id ${templateId}`];
+  if (propsBlock) {
+    parts.push('', propsBlock);
+  }
+  if (body) {
+    parts.push('', body);
+  }
+  return parts.join(eol);
 }
 
 export async function writeTemplateBlock(
   targetUri: Uri,
   templateId: string,
   collieText: string,
-  fallbackEol: string
+  fallbackEol: string,
+  propNames: string[] = []
 ): Promise<CollieWriteResult> {
   const exists = await fileExists(targetUri);
   let existingText = '';
@@ -208,7 +242,8 @@ export async function writeTemplateBlock(
   }
 
   const eol = resolveEol(existingText, fallbackEol);
-  const block = buildTemplateBlock(templateId, collieText, eol);
+  const normalizedProps = normalizePropNames(propNames);
+  const block = buildTemplateBlock(templateId, collieText, eol, normalizedProps);
 
   let nextText: string;
   let idLine = 0;
@@ -284,4 +319,117 @@ export async function appendToTemplateBlock(
     idLine: block.idLine,
     wasCreated: false
   };
+}
+
+export async function updateTemplateBlockProps(
+  targetUri: Uri,
+  templateId: string,
+  propNames: string[],
+  fallbackEol: string
+): Promise<boolean> {
+  const normalizedProps = normalizePropNames(propNames);
+  if (normalizedProps.length === 0) {
+    return false;
+  }
+
+  if (!(await fileExists(targetUri))) {
+    return false;
+  }
+
+  const bytes = await workspace.fs.readFile(targetUri);
+  const existingText = textDecoder.decode(bytes);
+  const eol = resolveEol(existingText, fallbackEol);
+  const blocks = parseTemplateBlockRanges(existingText);
+  const block = blocks.find(entry => entry.id === templateId);
+
+  if (!block) {
+    return false;
+  }
+
+  const lines = existingText.split(/\r?\n/);
+  const propsStart = findPropsBlockStart(lines, block.contentStartLine, block.contentEndLine);
+
+  if (propsStart === null) {
+    const insertion = buildPropsBlock(normalizedProps, eol)
+      .split(eol);
+    if (insertion.length === 0) {
+      return false;
+    }
+    const prefixBlank = block.contentStartLine > 0 && lines[block.contentStartLine - 1].trim().length > 0;
+    const suffixBlank = block.contentStartLine < lines.length && lines[block.contentStartLine].trim().length > 0;
+    const insertLines: string[] = [];
+    if (prefixBlank) {
+      insertLines.push('');
+    }
+    insertLines.push(...insertion);
+    if (suffixBlank) {
+      insertLines.push('');
+    }
+    lines.splice(block.contentStartLine, 0, ...insertLines);
+  } else {
+    const propsEnd = findPropsBlockEnd(lines, propsStart, block.contentEndLine);
+    const existingProps = collectPropsFromBlock(lines, propsStart, propsEnd);
+    const missing = normalizedProps.filter(name => !existingProps.has(name));
+    if (missing.length === 0) {
+      return false;
+    }
+    const insertion = missing.map(name => `  ${name}: any`);
+    lines.splice(propsEnd, 0, ...insertion);
+  }
+
+  const nextText = lines.join(eol);
+  await workspace.fs.writeFile(targetUri, textEncoder.encode(nextText));
+  return true;
+}
+
+function findPropsBlockStart(
+  lines: string[],
+  startLine: number,
+  endLine: number
+): number | null {
+  for (let i = startLine; i < endLine; i += 1) {
+    const line = lines[i];
+    if (line.trim() !== 'props') {
+      continue;
+    }
+    if (line.match(/^\s*props\s*$/)) {
+      return i;
+    }
+  }
+  return null;
+}
+
+function findPropsBlockEnd(lines: string[], propsStart: number, endLine: number): number {
+  const propsIndent = (lines[propsStart].match(/^\s*/)?.[0].length ?? 0);
+  for (let i = propsStart + 1; i < endLine; i += 1) {
+    const line = lines[i];
+    if (line.trim().length === 0) {
+      continue;
+    }
+    const indent = (line.match(/^\s*/)?.[0].length ?? 0);
+    if (indent <= propsIndent) {
+      return i;
+    }
+  }
+  return endLine;
+}
+
+function collectPropsFromBlock(lines: string[], propsStart: number, propsEnd: number): Set<string> {
+  const propsIndent = (lines[propsStart].match(/^\s*/)?.[0].length ?? 0);
+  const props = new Set<string>();
+  for (let i = propsStart + 1; i < propsEnd; i += 1) {
+    const line = lines[i];
+    if (!line.trim()) {
+      continue;
+    }
+    const indent = (line.match(/^\s*/)?.[0].length ?? 0);
+    if (indent <= propsIndent) {
+      break;
+    }
+    const match = line.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:/);
+    if (match) {
+      props.add(match[1]);
+    }
+  }
+  return props;
 }

@@ -19,7 +19,13 @@ import { convertJsxNodesToIr } from '../../convert/tsx/jsxToIr';
 import { JsxParseError, parseJsxSelection } from '../../convert/tsx/parseSelection';
 import { listByFile, listIds } from '../../lang/templateIndex';
 import { warnIfMissingConfig, warnIfMissingTooling } from '../config/warnings';
-import { appendToTemplateBlock, findMatchingTemplates, listTemplateBlocks, writeTemplateBlock } from './collieFileWriter';
+import {
+  appendToTemplateBlock,
+  findMatchingTemplates,
+  listTemplateBlocks,
+  updateTemplateBlockProps,
+  writeTemplateBlock
+} from './collieFileWriter';
 import { ensureCollieImport } from './imports';
 import { deriveTargetFileBase, deriveTemplateId } from './templateId';
 
@@ -88,6 +94,7 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
     const parseResult = parseJsxSelection(selection.text);
     const conversion = convertJsxNodesToIr(parseResult.rootNodes, parseResult.sourceFile);
     const collieText = printCollieDocument(conversion.nodes);
+    const propNames = collectJsxExpressionIdentifiers(parseResult.rootNodes);
     const warnings = conversion.diagnostics.warnings;
     const extractedSelection = parseResult.selectionText !== selection.text;
     logSelection(
@@ -126,7 +133,13 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
         }
 
         if (picked.templateId) {
-          const applied = await applyTsxEdits(selection, picked.templateId);
+          await updateTemplateBlockProps(
+            targetUri,
+            picked.templateId,
+            propNames,
+            selection.document.eol === EndOfLine.CRLF ? '\r\n' : '\n'
+          );
+          const applied = await applyTsxEdits(selection, picked.templateId, propNames);
           if (applied) {
             if (warnings.length > 0) {
               window.showWarningMessage(
@@ -164,6 +177,12 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
         }
 
         if (picked.templateId) {
+          await updateTemplateBlockProps(
+            targetUri,
+            picked.templateId,
+            propNames,
+            selection.document.eol === EndOfLine.CRLF ? '\r\n' : '\n'
+          );
           const appended = await appendToTemplateBlock(
             targetUri,
             picked.templateId,
@@ -177,7 +196,7 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
           }
 
           await openCollieDocumentAt(appended.uri, appended.idLine);
-          const applied = await applyTsxEdits(selection, picked.templateId);
+          const applied = await applyTsxEdits(selection, picked.templateId, propNames);
           const filename = basename(appended.uri.fsPath);
           const insertionMessage = `Appended to ${filename} template "${picked.templateId}".`;
           if (applied) {
@@ -205,9 +224,15 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
       }
     }
     const templateId = deriveTemplateId(selection.document, selection.selection, existingIds);
-    const created = await deliverCollieOutput(selection.document, collieText, templateId, targetUri);
+    const created = await deliverCollieOutput(
+      selection.document,
+      collieText,
+      templateId,
+      targetUri,
+      propNames
+    );
     if (created) {
-      const applied = await applyTsxEdits(selection, created.templateId);
+      const applied = await applyTsxEdits(selection, created.templateId, propNames);
       const filename = basename(created.uri.fsPath);
       const action = created.wasCreated ? 'Created' : 'Updated';
       const insertionMessage = `${action} ${filename}, inserted <Collie id="${created.templateId}">.`;
@@ -309,7 +334,8 @@ async function deliverCollieOutput(
   document: TextDocument,
   collieText: string,
   templateId: string,
-  targetUri: Uri | undefined
+  targetUri: Uri | undefined,
+  propNames: string[]
 ): Promise<CollieCreationResult | null> {
   if (!collieText.trim()) {
     window.showWarningMessage('Collie conversion produced empty output. Nothing to deliver.');
@@ -326,7 +352,8 @@ async function deliverCollieOutput(
     targetUri,
     templateId,
     collieText,
-    document.eol === EndOfLine.CRLF ? '\r\n' : '\n'
+    document.eol === EndOfLine.CRLF ? '\r\n' : '\n',
+    propNames
   );
   await openCollieDocumentAt(result.uri, result.idLine);
   return { uri: result.uri, templateId, idLine: result.idLine, wasCreated: result.wasCreated };
@@ -362,7 +389,8 @@ function suggestCollieFileUri(document: TextDocument): Uri | undefined {
 
 async function applyTsxEdits(
   selection: SelectionContext,
-  templateId: string
+  templateId: string,
+  propNames: string[]
 ): Promise<boolean> {
   const document = selection.document;
   const sourceText = document.getText();
@@ -376,7 +404,8 @@ async function applyTsxEdits(
 
   const edit = new WorkspaceEdit();
   const replaceRange = getReplacementRange(selection);
-  edit.replace(document.uri, replaceRange, `<Collie id="${templateId}" />`);
+  const replacement = buildCollieComponentReplacement(templateId, propNames);
+  edit.replace(document.uri, replaceRange, replacement);
   ensureCollieImport(document, sourceFile, edit);
 
   return workspace.applyEdit(edit);
@@ -499,4 +528,111 @@ function skipTrailingTrivia(text: string, end: number): number {
 
 function isWhitespace(char: string): boolean {
   return char === ' ' || char === '\n' || char === '\r' || char === '\t';
+}
+
+function buildCollieComponentReplacement(templateId: string, propNames: string[]): string {
+  const normalized = Array.from(new Set(propNames.filter(Boolean)));
+  if (normalized.length === 0) {
+    return `<Collie id="${templateId}" />`;
+  }
+  const props = normalized.map(name => `${name}={${name}}`).join(' ');
+  return `<Collie id="${templateId}" ${props} />`;
+}
+
+function collectJsxExpressionIdentifiers(nodes: readonly ts.JsxChild[]): string[] {
+  const names = new Set<string>();
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isJsxExpression(node)) {
+      if (node.expression) {
+        collectIdentifiersFromExpression(node.expression, names);
+      }
+    } else if (ts.isJsxSpreadAttribute(node)) {
+      collectIdentifiersFromExpression(node.expression, names);
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  for (const node of nodes) {
+    visit(node);
+  }
+
+  return Array.from(names);
+}
+
+function collectIdentifiersFromExpression(expression: ts.Expression, names: Set<string>): void {
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node)) {
+      if (isIdentifierReference(node)) {
+        if (node.text !== 'props') {
+          names.add(node.text);
+        }
+      }
+      return;
+    }
+
+    if (ts.isPropertyAccessExpression(node)) {
+      visit(node.expression);
+      return;
+    }
+
+    if (ts.isElementAccessExpression(node)) {
+      visit(node.expression);
+      if (node.argumentExpression) {
+        visit(node.argumentExpression);
+      }
+      return;
+    }
+
+    if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
+      visit(node.expression);
+      return;
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(expression);
+}
+
+function isIdentifierReference(node: ts.Identifier): boolean {
+  const parent = node.parent;
+  if (!parent) {
+    return true;
+  }
+
+  if (ts.isPropertyAccessExpression(parent) && parent.name === node) {
+    return false;
+  }
+
+  if (ts.isQualifiedName(parent) && parent.right === node) {
+    return false;
+  }
+
+  if (ts.isPropertyAssignment(parent) && parent.name === node) {
+    return false;
+  }
+
+  if (ts.isVariableDeclaration(parent) && parent.name === node) {
+    return false;
+  }
+
+  if (ts.isParameter(parent) && parent.name === node) {
+    return false;
+  }
+
+  if (ts.isBindingElement(parent) && parent.name === node) {
+    return false;
+  }
+
+  if (ts.isImportSpecifier(parent) || ts.isImportClause(parent)) {
+    return false;
+  }
+
+  if (ts.isShorthandPropertyAssignment(parent)) {
+    return true;
+  }
+
+  return true;
 }

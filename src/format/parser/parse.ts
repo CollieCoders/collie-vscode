@@ -59,6 +59,7 @@ function isElementNode(node: ParentNode): node is ElementNode {
 function hasTopLevelAssignment(payload: string): boolean {
   let quote: '"' | "'" | '`' | null = null;
   let braceDepth = 0;
+  let parenDepth = 0;
   let escapeNext = false;
 
   for (let i = 0; i < payload.length; i++) {
@@ -90,7 +91,15 @@ function hasTopLevelAssignment(payload: string): boolean {
       braceDepth = Math.max(0, braceDepth - 1);
       continue;
     }
-    if (ch === '=' && braceDepth === 0) {
+    if (ch === '(') {
+      parenDepth += 1;
+      continue;
+    }
+    if (ch === ')') {
+      parenDepth = Math.max(0, parenDepth - 1);
+      continue;
+    }
+    if (ch === '=' && braceDepth === 0 && parenDepth === 0) {
       return true;
     }
   }

@@ -17,6 +17,7 @@ import { collectCompilerDiagnostics } from './compilerDiagnostics';
 import { onDidChangeCollieConfig, resolveCollieConfigForDocument } from '../../config/collieConfig';
 import { getCssClassIndexForDocument, getUnknownClassOverrideSetting } from '../css/indexer';
 import type { Node } from '../../format/parser/ast';
+import { TextDecoder } from 'util';
 
 const SUPPORTED_DIRECTIVES = new Set(['@if', '@elseIf', '@else', '@for']);
 const DIALECT_DIRECTIVE_ALIASES = new Set(['@elseif', '@else-if']);
@@ -25,11 +26,20 @@ const REFRESH_DEBOUNCE_MS = 250;
 const REFRESH_OPEN_DOCS_KEY = '__collie_refresh_open_docs__';
 const COLLIE_GLOB = '**/*.collie';
 const COLLIE_EXCLUDE_GLOB = '**/{node_modules,dist,build,out,coverage,.git}/**';
+const TEMPLATE_USAGE_GLOB = '**/*.{ts,tsx,js,jsx,html}';
+const TEMPLATE_USAGE_EXCLUDE_GLOB = '**/{node_modules,dist,build,out,coverage,.git}/**';
+const COLLIE_COMPONENT_PATTERN = /<Collie\b[^>]*\bid\s*=\s*["']([^"']+)["']/g;
+const HTML_PLACEHOLDER_PATTERN = /\bid\s*=\s*["']([^"']*-collie)["']/g;
 const pendingDiagnostics = new Map<string, ReturnType<typeof setTimeout>>();
 let templateIndexVersion = 0;
 let cachedTemplateEntriesVersion = -1;
 let cachedTemplateEntries: Map<string, TemplateLocation[]> = new Map();
 let cachedTemplateEntriesPromise: Promise<Map<string, TemplateLocation[]>> | null = null;
+let templateUsageVersion = 0;
+let cachedTemplateUsageVersion = -1;
+let cachedReferencedIds: Set<string> = new Set();
+let cachedReferencedIdsPromise: Promise<Set<string>> | null = null;
+const textDecoder = new TextDecoder('utf-8');
 
 function invalidateTemplateEntryCache(): void {
   templateIndexVersion += 1;
@@ -38,8 +48,32 @@ function invalidateTemplateEntryCache(): void {
   cachedTemplateEntriesPromise = null;
 }
 
+function invalidateTemplateUsageCache(): void {
+  templateUsageVersion += 1;
+  cachedTemplateUsageVersion = -1;
+  cachedReferencedIds.clear();
+  cachedReferencedIdsPromise = null;
+}
+
 function shouldHandleDocument(document: TextDocument): boolean {
   return document.languageId === 'collie';
+}
+
+function isTemplateUsageDocument(document: TextDocument): boolean {
+  if (document.uri.scheme !== 'file') {
+    return false;
+  }
+  const languageId = document.languageId;
+  if (
+    languageId === 'typescript' ||
+    languageId === 'typescriptreact' ||
+    languageId === 'javascript' ||
+    languageId === 'javascriptreact' ||
+    languageId === 'html'
+  ) {
+    return true;
+  }
+  return document.fileName.endsWith('.html');
 }
 
 function spanToRange(document: TextDocument, span?: SourceSpan): Range {
@@ -196,6 +230,59 @@ async function getTemplateEntriesById(): Promise<Map<string, TemplateLocation[]>
   return cachedTemplateEntriesPromise;
 }
 
+async function getReferencedTemplateIds(): Promise<Set<string>> {
+  if (cachedTemplateUsageVersion === templateUsageVersion) {
+    return cachedReferencedIds;
+  }
+
+  if (cachedReferencedIdsPromise) {
+    return cachedReferencedIdsPromise;
+  }
+
+  cachedReferencedIdsPromise = (async () => {
+    const referenced = new Set<string>();
+    const files = await workspace.findFiles(TEMPLATE_USAGE_GLOB, TEMPLATE_USAGE_EXCLUDE_GLOB);
+
+    for (const uri of files) {
+      let contents = '';
+      try {
+        const data = await workspace.fs.readFile(uri);
+        contents = textDecoder.decode(data);
+      } catch {
+        continue;
+      }
+
+      let match: RegExpExecArray | null;
+      const componentRegex = new RegExp(COLLIE_COMPONENT_PATTERN.source, 'g');
+      while ((match = componentRegex.exec(contents)) !== null) {
+        const id = match[1]?.trim();
+        if (id) {
+          referenced.add(id);
+        }
+      }
+
+      const htmlRegex = new RegExp(HTML_PLACEHOLDER_PATTERN.source, 'g');
+      while ((match = htmlRegex.exec(contents)) !== null) {
+        const raw = match[1]?.trim();
+        if (!raw || !raw.endsWith('-collie')) {
+          continue;
+        }
+        const logicalId = raw.slice(0, -7);
+        if (logicalId) {
+          referenced.add(logicalId);
+        }
+      }
+    }
+
+    cachedReferencedIds = referenced;
+    cachedTemplateUsageVersion = templateUsageVersion;
+    cachedReferencedIdsPromise = null;
+    return referenced;
+  })();
+
+  return cachedReferencedIdsPromise;
+}
+
 function formatTemplateLocation(entry: TemplateLocation): string {
   const relativePath = workspace.asRelativePath(entry.uri);
   const line = entry.idRange.start.line + 1;
@@ -223,6 +310,35 @@ async function collectIdCollisionDiagnostics(document: TextDocument): Promise<VS
     const message = `Duplicate Collie template id "${entry.id}".\nAlso defined in:\n${othersList}`;
     const diagnostic = new VSDiagnostic(entry.idRange, message, DiagnosticSeverity.Error);
     diagnostic.code = 'COLLIE403';
+    diagnostic.source = 'collie';
+    diagnostics.push(diagnostic);
+  }
+
+  return diagnostics;
+}
+
+async function collectUnreferencedTemplateDiagnostics(document: TextDocument): Promise<VSDiagnostic[]> {
+  const diagnostics: VSDiagnostic[] = [];
+  const entriesInFile = listByFile(document.uri);
+  if (entriesInFile.length === 0) {
+    return diagnostics;
+  }
+
+  const referenced = await getReferencedTemplateIds();
+
+  for (const entry of entriesInFile) {
+    if (!entry.isValidId) {
+      continue;
+    }
+    if (referenced.has(entry.id)) {
+      continue;
+    }
+    const diagnostic = new VSDiagnostic(
+      entry.idRange,
+      `Template id "${entry.id}" is not referenced by a Collie mount or HTML placeholder.`,
+      DiagnosticSeverity.Warning
+    );
+    diagnostic.code = 'COLLIE404';
     diagnostic.source = 'collie';
     diagnostics.push(diagnostic);
   }
@@ -395,6 +511,7 @@ async function applyDiagnostics(
   if (parsed) {
     diagnostics.push(...collectParserDiagnostics(document, parsed));
     diagnostics.push(...await collectIdCollisionDiagnostics(document));
+    diagnostics.push(...await collectUnreferencedTemplateDiagnostics(document));
   }
 
   diagnostics.push(...collectUnknownDirectiveDiagnostics(document));
@@ -498,12 +615,20 @@ export function registerDiagnosticsProvider(context: FeatureContext) {
   context.register(
     workspace.onDidChangeTextDocument(event => {
       scheduleDiagnostics(event.document, collection, context);
+      if (isTemplateUsageDocument(event.document)) {
+        invalidateTemplateUsageCache();
+        scheduleOpenDocumentsRefresh(collection, context);
+      }
     })
   );
 
   context.register(
     workspace.onDidSaveTextDocument(document => {
       scheduleDiagnostics(document, collection, context);
+      if (isTemplateUsageDocument(document)) {
+        invalidateTemplateUsageCache();
+        scheduleOpenDocumentsRefresh(collection, context);
+      }
     })
   );
 
@@ -543,6 +668,7 @@ export function registerDiagnosticsProvider(context: FeatureContext) {
   context.register(
     onDidChangeTemplateIndex(() => {
       invalidateTemplateEntryCache();
+      invalidateTemplateUsageCache();
       scheduleOpenDocumentsRefresh(collection, context);
     })
   );
