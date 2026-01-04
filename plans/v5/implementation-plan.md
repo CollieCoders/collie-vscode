@@ -13,7 +13,7 @@ If there is a conflict, the risk register takes precedence.
 
 ### Status
 
-0% Complete
+100% Complete
 
 ### Context
 

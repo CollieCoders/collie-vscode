@@ -19,13 +19,7 @@ import { convertJsxNodesToIr } from '../../convert/tsx/jsxToIr';
 import { JsxParseError, parseJsxSelection } from '../../convert/tsx/parseSelection';
 import { listByFile, listIds } from '../../lang/templateIndex';
 import { warnIfMissingConfig, warnIfMissingTooling } from '../config/warnings';
-import {
-  appendToTemplateBlock,
-  findMatchingTemplates,
-  listTemplateBlocks,
-  updateTemplateBlockProps,
-  writeTemplateBlock
-} from './collieFileWriter';
+import { writeTemplateBlock } from './collieFileWriter';
 import { ensureCollieImport } from './imports';
 import { deriveTargetFileBase, deriveTemplateId } from './templateId';
 
@@ -109,113 +103,6 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
     );
 
     const targetUri = suggestCollieFileUri(selection.document);
-
-    let hasMatchingTemplates = false;
-    if (targetUri) {
-      const matches = await findMatchingTemplates(targetUri, collieText);
-      hasMatchingTemplates = matches.length > 0;
-      if (hasMatchingTemplates) {
-        const pickItems: Array<{ label: string; description?: string; templateId?: string }> = [
-          { label: 'Create new template' },
-          ...matches.map(match => ({
-            label: `Reuse existing id: ${match.id}`,
-            description: `${basename(targetUri.fsPath)}:${match.idLine + 1}`,
-            templateId: match.id
-          }))
-        ];
-
-        const picked = await window.showQuickPick(pickItems, {
-          placeHolder: 'Found a matching template. Reuse an existing id or create a new template.'
-        });
-
-        if (!picked) {
-          return;
-        }
-
-        if (picked.templateId) {
-          await updateTemplateBlockProps(
-            targetUri,
-            picked.templateId,
-            propNames,
-            selection.document.eol === EndOfLine.CRLF ? '\r\n' : '\n'
-          );
-          const applied = await applyTsxEdits(selection, picked.templateId, propNames);
-          if (applied) {
-            if (warnings.length > 0) {
-              window.showWarningMessage(
-                `Reused existing template id "${picked.templateId}". JSX parsed with warnings; see the Collie Conversion output.`
-              );
-            } else {
-              window.showInformationMessage(`Reused existing template id "${picked.templateId}".`);
-            }
-          } else {
-            window.showWarningMessage(`Reused template id "${picked.templateId}" but could not update the TSX selection.`);
-          }
-          return;
-        }
-      }
-    }
-
-    if (targetUri && !hasMatchingTemplates) {
-      const templateBlocks = await listTemplateBlocks(targetUri);
-      if (templateBlocks.length > 0) {
-        const pickItems: Array<{ label: string; description?: string; templateId?: string }> = [
-          { label: 'Create new template' },
-          ...templateBlocks.map(block => ({
-            label: `Append to existing template: ${block.id}`,
-            description: `${basename(targetUri.fsPath)}:${block.idLine + 1}`,
-            templateId: block.id
-          }))
-        ];
-
-        const picked = await window.showQuickPick(pickItems, {
-          placeHolder: 'Append to an existing template or create a new one.'
-        });
-
-        if (!picked) {
-          return;
-        }
-
-        if (picked.templateId) {
-          await updateTemplateBlockProps(
-            targetUri,
-            picked.templateId,
-            propNames,
-            selection.document.eol === EndOfLine.CRLF ? '\r\n' : '\n'
-          );
-          const appended = await appendToTemplateBlock(
-            targetUri,
-            picked.templateId,
-            collieText,
-            selection.document.eol === EndOfLine.CRLF ? '\r\n' : '\n'
-          );
-
-          if (!appended) {
-            window.showWarningMessage(`Could not append to template id "${picked.templateId}".`);
-            return;
-          }
-
-          await openCollieDocumentAt(appended.uri, appended.idLine);
-          const applied = await applyTsxEdits(selection, picked.templateId, propNames);
-          const filename = basename(appended.uri.fsPath);
-          const insertionMessage = `Appended to ${filename} template "${picked.templateId}".`;
-          if (applied) {
-            if (warnings.length > 0) {
-              window.showWarningMessage(
-                `${insertionMessage} JSX parsed with warnings; see the Collie Conversion output.`
-              );
-            } else {
-              window.showInformationMessage(insertionMessage);
-            }
-          } else {
-            window.showWarningMessage(
-              `Appended to ${filename} but could not update the TSX selection.`
-            );
-          }
-          return;
-        }
-      }
-    }
 
     const existingIds = new Set(listIds());
     if (targetUri) {
