@@ -143,7 +143,7 @@ If your existing scheme uses `App.App` style scoping, keep it. The key is:
 
 ### Status
 
-0% Complete
+100% Complete
 
 ### Context
 

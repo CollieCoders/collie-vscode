@@ -204,7 +204,7 @@ function buildPropsBlock(propNames: string[], eol: string): string {
   if (propNames.length === 0) {
     return '';
   }
-  const lines = ['props', ...propNames.map(name => `  ${name}: any`)];
+  const lines = ['#props', ...propNames.map(name => `  ${name}: any`)];
   return lines.join(eol);
 }
 
@@ -218,10 +218,13 @@ function buildTemplateBlock(
   const propsBlock = buildPropsBlock(propNames, eol);
   const parts: string[] = [`#id ${templateId}`];
   if (propsBlock) {
-    parts.push('', propsBlock);
+    parts.push('', propsBlock, '');
   }
   if (body) {
-    parts.push('', body);
+    if (!propsBlock) {
+      parts.push('');
+    }
+    parts.push(body);
   }
   return parts.join(eol);
 }
@@ -389,10 +392,10 @@ function findPropsBlockStart(
 ): number | null {
   for (let i = startLine; i < endLine; i += 1) {
     const line = lines[i];
-    if (line.trim() !== 'props') {
+    if (line.trim() !== '#props') {
       continue;
     }
-    if (line.match(/^\s*props\s*$/)) {
+    if (line.match(/^\s*#props\s*$/)) {
       return i;
     }
   }
