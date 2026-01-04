@@ -453,7 +453,7 @@ We need to update extension-side diagnostics so they align with the new compiler
 
 ### Status
 
-0% Complete
+100% Complete
 
 ### Context
 
@@ -511,7 +511,7 @@ This stage is about strict output formatting *from conversion/writer*, not the g
 
 ### Status
 
-0% Complete
+100% Complete
 
 ### Context
 

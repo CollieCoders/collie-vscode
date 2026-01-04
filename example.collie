@@ -1,0 +1,33 @@
+#id UserPanel.LoggedIn
+
+#props
+  username: string
+
+section.user-info
+  h2 | Welcome back, {{ username }}
+
+
+#id UserPanel.LoggedOut
+
+#props
+  onLogin: () => void
+
+section.logged-out
+  button(onClick={onLogin}) | Log in
+
+
+#id UserPanel
+
+#props
+  loggedIn: boolean
+  username: string
+  onLogin: () => void
+
+div.user-panel
+  @if loggedIn
+    section.user-info
+      h2 | Welcome back, {{ username }}
+  @else
+    section.logged-out
+      button(onClick={onLogin}) | Log in
+

@@ -226,6 +226,7 @@ function buildTemplateBlock(
     }
     parts.push(body);
   }
+  parts.push('');
   return parts.join(eol);
 }
 
@@ -252,12 +253,12 @@ export async function writeTemplateBlock(
   let idLine = 0;
 
   if (existingText.trim().length === 0) {
-    nextText = `${block}${eol}`;
+    nextText = block;
   } else {
     const trimmed = existingText.trimEnd();
     const prefix = `${trimmed}${eol}${eol}`;
     idLine = countNewlines(prefix);
-    nextText = `${prefix}${block}${eol}`;
+    nextText = `${prefix}${block}`;
   }
 
   await workspace.fs.writeFile(targetUri, textEncoder.encode(nextText));
