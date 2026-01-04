@@ -136,7 +136,7 @@ function collectDuplicatePropDiagnostics(document: TextDocument): VSDiagnostic[]
     const indent = line.firstNonWhitespaceCharacterIndex;
 
     if (!inPropsBlock) {
-      if (trimmed === 'props') {
+      if (trimmed === '#props') {
         inPropsBlock = true;
         propsIndent = indent;
       }
@@ -144,7 +144,7 @@ function collectDuplicatePropDiagnostics(document: TextDocument): VSDiagnostic[]
     }
 
     if (indent <= propsIndent) {
-      inPropsBlock = trimmed === 'props';
+      inPropsBlock = trimmed === '#props';
       if (inPropsBlock) {
         propsIndent = indent;
       }

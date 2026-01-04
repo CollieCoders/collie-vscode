@@ -1,5 +1,6 @@
 import { Position, type TextDocument } from 'vscode';
 import { parse } from '../format/parser';
+import type { PropsDecl, PropsField } from '../format/parser/ast';
 import type { Diagnostic, SourceSpan } from '../format/parser/diagnostics';
 import type { ParsedDocument } from '.';
 
@@ -96,11 +97,29 @@ function collectTemplateIdDiagnostics(document: TextDocument): Diagnostic[] {
 
 export function parseCollieDocument(document: TextDocument): ParsedDocument {
   const { root, diagnostics } = parse(document.getText());
-  const filteredDiagnostics = diagnostics.filter(
-    diagnostic => diagnostic.code !== 'COLLIE401' && diagnostic.code !== 'COLLIE402'
-  );
+  const propsBlocks = findHashPropsBlocks(document);
+  const filteredDiagnostics = diagnostics.filter(diagnostic => {
+    if (diagnostic.code === 'COLLIE401' || diagnostic.code === 'COLLIE402') {
+      return false;
+    }
+    if (diagnostic.code === 'COLLIE101' || diagnostic.code === 'COLLIE102') {
+      return false;
+    }
+    if (diagnostic.code === 'COLLIE003') {
+      const lineIndex = diagnostic.span?.start?.line ? diagnostic.span.start.line - 1 : -1;
+      if (lineIndex >= 0 && isLineInHashPropsBlock(lineIndex, propsBlocks)) {
+        return false;
+      }
+    }
+    return true;
+  });
   const templateDiagnostics = collectTemplateIdDiagnostics(document);
   const combinedDiagnostics = filteredDiagnostics.concat(templateDiagnostics);
+
+  const hashProps = parseHashPropsDeclaration(document, propsBlocks);
+  if (hashProps) {
+    root.props = hashProps;
+  }
 
   if (root.rawId) {
     root.rawId = undefined;
@@ -111,4 +130,90 @@ export function parseCollieDocument(document: TextDocument): ParsedDocument {
     diagnostics: combinedDiagnostics,
     version: document.version
   };
+}
+
+interface HashPropsBlock {
+  startLine: number;
+  endLine: number;
+  indent: number;
+  span: SourceSpan;
+}
+
+function findHashPropsBlocks(document: TextDocument): HashPropsBlock[] {
+  const blocks: HashPropsBlock[] = [];
+
+  for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex += 1) {
+    const line = document.lineAt(lineIndex);
+    const trimmed = line.text.trim();
+    if (trimmed !== '#props') {
+      continue;
+    }
+
+    const indent = line.firstNonWhitespaceCharacterIndex;
+    const startCharacter = line.text.indexOf('#props');
+    const span = buildSpan(document, lineIndex, Math.max(startCharacter, 0), '#props'.length);
+    let endLine = lineIndex;
+
+    for (let next = lineIndex + 1; next < document.lineCount; next += 1) {
+      const nextLine = document.lineAt(next);
+      if (nextLine.text.trim().length === 0) {
+        endLine = next;
+        continue;
+      }
+
+      const nextIndent = nextLine.firstNonWhitespaceCharacterIndex;
+      if (nextIndent <= indent) {
+        break;
+      }
+
+      endLine = next;
+    }
+
+    blocks.push({ startLine: lineIndex, endLine, indent, span });
+  }
+
+  return blocks;
+}
+
+function isLineInHashPropsBlock(lineIndex: number, blocks: HashPropsBlock[]): boolean {
+  return blocks.some(block => lineIndex >= block.startLine && lineIndex <= block.endLine);
+}
+
+function parseHashPropsDeclaration(
+  document: TextDocument,
+  blocks: HashPropsBlock[]
+): PropsDecl | undefined {
+  if (blocks.length === 0) {
+    return undefined;
+  }
+
+  const block = blocks[0];
+  const fields: PropsField[] = [];
+
+  for (let lineIndex = block.startLine + 1; lineIndex <= block.endLine; lineIndex += 1) {
+    const line = document.lineAt(lineIndex);
+    const trimmed = line.text.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    const indent = line.firstNonWhitespaceCharacterIndex;
+    if (indent <= block.indent) {
+      continue;
+    }
+
+    const content = line.text.slice(indent);
+    const match = content.match(/^([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:\s*(.+)$/);
+    if (!match) {
+      continue;
+    }
+
+    const name = match[1];
+    const optional = match[2] === '?';
+    const typeText = match[3].trim();
+    const span = buildSpan(document, lineIndex, indent, content.length);
+    fields.push({ name, optional, typeText, span });
+  }
+
+  return { fields, span: block.span };
 }
