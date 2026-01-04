@@ -11,6 +11,10 @@ If there is a conflict, the risk register takes precedence.
 
 ## Stage 1 — Remove “Append to Existing Template” from Conversion UX and Code Paths
 
+### Status
+
+0% Complete
+
 ### Context
 
 Current conversion behavior offers an option that appends converted nodes into an existing `#id` block (or reuses an existing id), which easily produces duplicate rendering and confusing output. We want the default and only behavior to be:
@@ -79,6 +83,10 @@ No “append” option should remain in the command flow.
 
 ## Stage 2 — Deterministic, Collision-Proof Template ID Strategy for Repeated Conversions
 
+### Status
+
+0% Complete
+
 ### Context
 
 Once “append” is removed, repeated conversions will generate repeated ids. We need a stable, predictable strategy for generating new ids that:
@@ -132,6 +140,10 @@ If your existing scheme uses `App.App` style scoping, keep it. The key is:
 ---
 
 ## Stage 3 — Switch Conversion Output from `props` to `#props` and Enforce Formatting Rules
+
+### Status
+
+0% Complete
 
 ### Context
 
@@ -219,6 +231,10 @@ username: string
 ---
 
 ## Stage 4 — TSX → Collie Conversion for Conditionals Using `@if / @elseIf / @else`
+
+### Status
+
+0% Complete
 
 ### Context
 
@@ -327,6 +343,10 @@ div.user-panel
 
 ## Stage 5 — Update Prop Inference + TSX Rewrite to Match New Conditional Conversion
 
+### Status
+
+0% Complete
+
 ### Context
 
 Conditional conversion changes what props must be passed to `<Collie />`.
@@ -374,6 +394,10 @@ Also: event handler expressions must remain safe and readable:
 ---
 
 ## Stage 6 — Align Extension Diagnostics with New `#props` Semantics (Stop False Positives)
+
+### Status
+
+0% Complete
 
 ### Context
 
@@ -426,6 +450,10 @@ We need to update extension-side diagnostics so they align with the new compiler
 ---
 
 ## Stage 7 — Conversion Formatting Guarantees (Spacing + No Sandwiching)
+
+### Status
+
+0% Complete
 
 ### Context
 
@@ -480,6 +508,10 @@ This stage is about strict output formatting *from conversion/writer*, not the g
 ---
 
 ## Stage 8 — End-to-End Local “Golden” Example Validation (Manual Fixture Files)
+
+### Status
+
+0% Complete
 
 ### Context
 
