@@ -24,11 +24,11 @@ const classShorthandPattern = /\.(?:\$[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][\w-]*)/g;
 const singleBracePattern = /(?<!\{)\{(?!\{).*?(?<!\})\}(?!\})/g;
 const interpolationPattern = /\{\{.*?\}\}/g;
 const idDirectivePattern = /^(\s*)(#?id)(?:\s+|:\s*|=\s*)(.+)$/i;
-const propsKeywordPattern = /^(\s*)(props)\b/;
+const propsKeywordPattern = /^(\s*)(#?props)\b/;
 const propsFieldPattern = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:/;
 const tagPattern = /^(\s*)([A-Za-z][A-Za-z0-9_$]*)/;
 const pipeTextPattern = /^(\s*)\|/;
-const classesKeywordPattern = /^(\s*)(classes)\b/;
+const classesKeywordPattern = /^(\s*)(#?classes)\b/;
 const classAliasLinePattern = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*=/;
 const expressionLinePattern = /^(\s*)(=)\s+/;
 

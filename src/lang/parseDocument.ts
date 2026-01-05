@@ -111,6 +111,12 @@ export function parseCollieDocument(document: TextDocument): ParsedDocument {
         return false;
       }
     }
+    if (diagnostic.code === 'COLLIE004') {
+      const lineIndex = diagnostic.span?.start?.line ? diagnostic.span.start.line - 1 : -1;
+      if (lineIndex >= 0 && isLineInHashPropsBlock(lineIndex, propsBlocks)) {
+        return false;
+      }
+    }
     return true;
   });
   const templateDiagnostics = collectTemplateIdDiagnostics(document);
@@ -187,33 +193,33 @@ function parseHashPropsDeclaration(
     return undefined;
   }
 
-  const block = blocks[0];
   const fields: PropsField[] = [];
+  for (const block of blocks) {
+    for (let lineIndex = block.startLine + 1; lineIndex <= block.endLine; lineIndex += 1) {
+      const line = document.lineAt(lineIndex);
+      const trimmed = line.text.trim();
+      if (!trimmed) {
+        continue;
+      }
 
-  for (let lineIndex = block.startLine + 1; lineIndex <= block.endLine; lineIndex += 1) {
-    const line = document.lineAt(lineIndex);
-    const trimmed = line.text.trim();
-    if (!trimmed) {
-      continue;
+      const indent = line.firstNonWhitespaceCharacterIndex;
+      if (indent <= block.indent) {
+        continue;
+      }
+
+      const content = line.text.slice(indent);
+      const match = content.match(/^([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:\s*(.+)$/);
+      if (!match) {
+        continue;
+      }
+
+      const name = match[1];
+      const optional = match[2] === '?';
+      const typeText = match[3].trim();
+      const span = buildSpan(document, lineIndex, indent, content.length);
+      fields.push({ name, optional, typeText, span });
     }
-
-    const indent = line.firstNonWhitespaceCharacterIndex;
-    if (indent <= block.indent) {
-      continue;
-    }
-
-    const content = line.text.slice(indent);
-    const match = content.match(/^([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:\s*(.+)$/);
-    if (!match) {
-      continue;
-    }
-
-    const name = match[1];
-    const optional = match[2] === '?';
-    const typeText = match[3].trim();
-    const span = buildSpan(document, lineIndex, indent, content.length);
-    fields.push({ name, optional, typeText, span });
   }
 
-  return { fields, span: block.span };
+  return { fields, span: blocks[0].span };
 }

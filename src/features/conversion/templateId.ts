@@ -37,7 +37,7 @@ export function deriveTemplateId(
   let candidate = normalizedBase;
   let counter = 2;
   while (existingIds.has(candidate)) {
-    candidate = `${normalizedBase}~${counter}`;
+    candidate = `${normalizedBase}_${counter}`;
     counter += 1;
   }
 

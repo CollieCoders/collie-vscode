@@ -2,7 +2,7 @@
   "name": "collie-vscode",
   "displayName": "Collie",
   "description": "VS Code language support for Collie templates",
-  "version": "1.0.3",
+  "version": "1.1.3",
   "publisher": "collie",
   "license": "MIT",
   "repository": "https://github.com/collie-lang/collie-vscode",
@@ -267,23 +267,27 @@
       ]
     },
     "configurationDefaults": {
-      "[collie]": {
-        "editor.semanticHighlighting.enabled": true,
-        "editor.semanticTokenColorCustomizations": {
-          "rules": {
-            "collieTag": "#569CD6",
-            "collieClassShorthand": "#4EC9B0",
-            "collieDirective": "#C586C0",
-            "colliePropsKeyword": "#D7BA7D",
-            "colliePropsField": "#9CDCFE",
-            "collieInterpolation": "#CE9178",
-            "colliePipeText": "#D4D4D4",
-            "collieComment": "#6A9955",
-            "collieClassesKeyword": "#D7BA7D",
-            "collieClassAliasName": "#4FC1FF",
-            "collieClassAliasUsage": "#4EC9B0",
-            "collieIdKeyword": "#C586C0",
-            "collieIdValue": "#DCDCAA"
+      "editor.semanticHighlighting.enabled": true,
+      "editor.semanticTokenColorCustomizations": {
+        "enabled": true,
+        "rules": {
+          "collieTag": "#569CD6",
+          "collieClassShorthand": "#4EC9B0",
+          "collieDirective": "#C586C0",
+          "colliePropsKeyword": {
+            "foreground": "#DDC144"
+          },
+          "colliePropsField": "#9CDCFE",
+          "collieInterpolation": "#CE9178",
+          "colliePipeText": "#D4D4D4",
+          "collieComment": "#6A9955",
+          "collieClassesKeyword": {
+            "foreground": "#DDC144"
+          },
+          "collieClassAliasName": "#4FC1FF",
+          "collieClassAliasUsage": "#4EC9B0",
+          "collieIdKeyword": {
+            "foreground": "#DDC144"
           }
         }
       }
