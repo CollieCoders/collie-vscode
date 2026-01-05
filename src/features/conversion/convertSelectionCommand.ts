@@ -568,11 +568,61 @@ function collectIdentifiersFromExpression(
   names: Map<string, Set<'call' | 'event' | 'arrow' | 'ref'>>,
   isEventHandler: boolean
 ): void {
+  // Scope stack to track locally-bound identifiers
+  const scopeStack: Set<string>[] = [];
+
+  const pushScope = () => {
+    scopeStack.push(new Set<string>());
+  };
+
+  const popScope = () => {
+    scopeStack.pop();
+  };
+
+  const addBinding = (name: string) => {
+    if (scopeStack.length > 0) {
+      scopeStack[scopeStack.length - 1].add(name);
+    }
+  };
+
+  const isBound = (name: string): boolean => {
+    for (const scope of scopeStack) {
+      if (scope.has(name)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Extract bound names from binding patterns
+  const extractBindingNames = (name: ts.BindingName): void => {
+    if (ts.isIdentifier(name)) {
+      addBinding(name.text);
+      return;
+    }
+
+    if (ts.isObjectBindingPattern(name)) {
+      for (const element of name.elements) {
+        extractBindingNames(element.name);
+      }
+      return;
+    }
+
+    if (ts.isArrayBindingPattern(name)) {
+      for (const element of name.elements) {
+        if (ts.isBindingElement(element)) {
+          extractBindingNames(element.name);
+        }
+      }
+    }
+  };
+
   const visit = (node: ts.Node, isCalleeContext: boolean = false, isArrowBody: boolean = false): void => {
     if (ts.isIdentifier(node)) {
       if (isIdentifierReference(node)) {
-        if (node.text !== 'props') {
-          const usages = names.get(node.text) || new Set();
+        // Only treat as prop if not bound locally and not 'props'
+        if (node.text !== 'props' && !isBound(node.text)) {
+          const usages = names.get(node.text) ?? new Set();
           if (isCalleeContext) {
             usages.add('call');
           } else if (isEventHandler) {
@@ -597,12 +647,65 @@ function collectIdentifiersFromExpression(
     }
 
     if (ts.isArrowFunction(node)) {
+      pushScope();
+      // Bind arrow function parameters
+      for (const param of node.parameters) {
+        extractBindingNames(param.name);
+      }
       const body = node.body;
       if (ts.isCallExpression(body)) {
         visit(body, false, true);
       } else {
         visit(body, false, false);
       }
+      popScope();
+      return;
+    }
+
+    if (ts.isFunctionExpression(node)) {
+      pushScope();
+      // Bind function parameters
+      for (const param of node.parameters) {
+        extractBindingNames(param.name);
+      }
+      if (node.body) {
+        visit(node.body, false, false);
+      }
+      popScope();
+      return;
+    }
+
+    if (ts.isCatchClause(node)) {
+      pushScope();
+      // Bind catch parameter
+      if (node.variableDeclaration) {
+        extractBindingNames(node.variableDeclaration.name);
+      }
+      visit(node.block, false, false);
+      popScope();
+      return;
+    }
+
+    if (ts.isVariableDeclaration(node)) {
+      // Bind variable name
+      extractBindingNames(node.name);
+      if (node.initializer) {
+        visit(node.initializer, false, isArrowBody);
+      }
+      return;
+    }
+
+    if (ts.isVariableDeclarationList(node)) {
+      for (const decl of node.declarations) {
+        visit(decl, false, isArrowBody);
+      }
+      return;
+    }
+
+    if (ts.isBlock(node)) {
+      pushScope();
+      ts.forEachChild(node, (child) => visit(child, false, isArrowBody));
+      popScope();
       return;
     }
 
