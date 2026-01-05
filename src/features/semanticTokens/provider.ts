@@ -1,7 +1,8 @@
 import type { SemanticTokens, TextDocument, CancellationToken } from 'vscode';
 import { languages, SemanticTokensBuilder, workspace } from 'vscode';
 import type { FeatureContext } from '../types';
-import { CollieSemanticTokenType, collieSemanticTokenTypes, collieSemanticTokensLegend } from './legend';
+import type { CollieSemanticTokenType} from './legend';
+import { collieSemanticTokenTypes, collieSemanticTokensLegend } from './legend';
 import { tokenizeCollieSemanticTokens } from './tokenize';
 import type { CollieSemanticToken } from './tokenize';
 
@@ -45,7 +46,7 @@ function emptySemanticTokens(): SemanticTokens {
 function getOrCreateCacheEntry(document: TextDocument): TokenCacheEntry {
   const cacheKey = getDocumentCacheKey(document);
   const existing = tokenCache.get(cacheKey);
-  if (existing && existing.version === document.version) {
+  if (existing?.version === document.version) {
     return existing;
   }
 

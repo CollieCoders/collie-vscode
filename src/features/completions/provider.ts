@@ -1,11 +1,12 @@
+import type {
+  Position,
+  TextDocument} from 'vscode';
 import {
   CompletionItem,
   CompletionItemKind,
   FileType,
-  Position,
   languages,
   Range,
-  TextDocument,
   Uri,
   workspace
 } from 'vscode';

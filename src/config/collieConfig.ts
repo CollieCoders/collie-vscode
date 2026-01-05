@@ -1,6 +1,7 @@
+import type {
+  Uri} from 'vscode';
 import {
   EventEmitter,
-  Uri,
   workspace,
   type TextDocument,
   type WorkspaceFolder,
@@ -35,7 +36,7 @@ function removeCacheEntry(cacheKey: string): void {
   if (cached?.configPath) {
     const folderSet = configPathToCacheKeys.get(cached.configPath);
     folderSet?.delete(cacheKey);
-    if (folderSet && folderSet.size === 0) {
+    if (folderSet?.size === 0) {
       configPathToCacheKeys.delete(cached.configPath);
     }
   }

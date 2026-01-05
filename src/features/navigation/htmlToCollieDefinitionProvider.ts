@@ -88,7 +88,7 @@ async function provideHtmlToCollieDefinition(
 
       definitionLinks.push({
         targetUri: template.uri,
-        targetRange: targetRange,
+        targetRange,
         targetSelectionRange: targetRange
       });
     }

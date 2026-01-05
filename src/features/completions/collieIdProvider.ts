@@ -1,9 +1,10 @@
+import type {
+  Position,
+  TextDocument} from 'vscode';
 import {
   CompletionItem,
   CompletionItemKind,
-  Position,
   Range,
-  TextDocument,
   languages,
   workspace
 } from 'vscode';
@@ -18,10 +19,10 @@ function isTsxDocument(document: TextDocument): boolean {
   return document.languageId === 'typescriptreact' || document.languageId === 'javascriptreact';
 }
 
-type CollieIdCompletionContext = {
+interface CollieIdCompletionContext {
   range: Range;
   prefix: string;
-};
+}
 
 function findCollieIdCompletionContext(
   document: TextDocument,

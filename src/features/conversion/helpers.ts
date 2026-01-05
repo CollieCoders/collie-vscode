@@ -1,5 +1,6 @@
 import { TextDecoder, TextEncoder } from 'util';
-import { Uri, workspace } from 'vscode';
+import type { Uri} from 'vscode';
+import { workspace } from 'vscode';
 
 const textDecoder = new TextDecoder('utf-8');
 const textEncoder = new TextEncoder();

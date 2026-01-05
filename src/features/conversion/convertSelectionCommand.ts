@@ -539,7 +539,7 @@ function collectIdentifiersFromExpressionText(
     return;
   }
   const declaration = statement.declarationList.declarations[0];
-  if (!declaration || !declaration.initializer) {
+  if (!declaration?.initializer) {
     return;
   }
 

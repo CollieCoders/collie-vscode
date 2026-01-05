@@ -1,4 +1,5 @@
-import { EventEmitter, Uri, workspace, type Event } from 'vscode';
+import type { Uri} from 'vscode';
+import { EventEmitter, workspace, type Event } from 'vscode';
 import type { FeatureContext } from '../../features/types';
 import type { TemplateLocation } from './types';
 import { isCollieUri, isCollieDocument } from './helpers/exclude';

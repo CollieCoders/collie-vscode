@@ -1,19 +1,19 @@
 import {
   CodeAction,
   CodeActionKind,
-  CodeActionProvider,
   EndOfLine,
   languages,
-  Position,
   Range,
-  TextDocument,
   Uri,
   WorkspaceEdit,
   commands,
   window,
   workspace
 } from 'vscode';
-import type { Diagnostic } from 'vscode';
+import type { Diagnostic ,
+  CodeActionProvider,
+  Position,
+  TextDocument} from 'vscode';
 import type { FeatureContext } from '../types';
 import { listByFile, onDidChangeTemplateIndex, type TemplateLocation } from '../../lang/templateIndex';
 
@@ -29,16 +29,16 @@ let cachedTemplateEntriesVersion = -1;
 let cachedTemplateEntries: Map<string, TemplateLocation[]> = new Map();
 let cachedTemplateEntriesPromise: Promise<Map<string, TemplateLocation[]>> | null = null;
 
-type DiagnosticFix = {
+interface DiagnosticFix {
   range: Range;
   replacementText: string;
-};
+}
 
-type DiagnosticData = {
+interface DiagnosticData {
   fix?: DiagnosticFix;
   kind?: string;
   propName?: string;
-};
+}
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -290,7 +290,7 @@ function buildFixAllAction(document: TextDocument, diagnostics: Diagnostic[]): C
 }
 
 function collectFixEdits(document: TextDocument, diagnostics: Diagnostic[]): DiagnosticFix[] {
-  const fixes: Array<DiagnosticFix & { startOffset: number; endOffset: number }> = [];
+  const fixes: (DiagnosticFix & { startOffset: number; endOffset: number })[] = [];
 
   for (const diagnostic of diagnostics) {
     const data = diagnostic as DiagnosticData | undefined;
@@ -480,7 +480,7 @@ export function registerDiagnosticsCodeActions(context: FeatureContext) {
           prompt: 'Enter new template ID',
           value: initialValue ? `${initialValue}2` : '',
           validateInput: (value) => {
-            if (!value || !value.trim()) {
+            if (!value?.trim()) {
               return 'ID cannot be empty';
             }
             if (!TEMPLATE_ID_PATTERN.test(value)) {
@@ -506,7 +506,7 @@ export function registerDiagnosticsCodeActions(context: FeatureContext) {
   context.register(
     commands.registerCommand(
       'collie.openConflictingTemplates',
-      async (uris: Array<{ toString(): string }>) => {
+      async (uris: { toString(): string }[]) => {
         for (const uri of uris) {
           await window.showTextDocument(uri as any, { preview: false });
         }

@@ -1,5 +1,6 @@
 import { dirname, join } from 'path';
-import { FileType, Location, Position, Range, Uri, languages, TextDocument, workspace, type DefinitionLink } from 'vscode';
+import type { TextDocument} from 'vscode';
+import { FileType, Location, Position, Range, Uri, languages, workspace, type DefinitionLink } from 'vscode';
 import type { FeatureContext } from '../types';
 import type { ElementNode, Node } from '../../format/parser/ast';
 import type { SourceSpan } from '../../format/parser/diagnostics';
@@ -197,10 +198,10 @@ function findComponentNode(nodes: Node[], offset: number): ElementNode | null {
   return null;
 }
 
-type CollieIdReference = {
+interface CollieIdReference {
   id: string;
   range: Range;
-};
+}
 
 function findCollieIdReference(
   document: TextDocument,
@@ -273,7 +274,7 @@ async function provideTsxDefinition(
 
   try {
     const reference = findCollieIdReference(document, position);
-    if (!reference || !reference.id) {
+    if (!reference?.id) {
       return undefined;
     }
 

@@ -1,4 +1,5 @@
-import { Uri, workspace } from 'vscode';
+import type { Uri} from 'vscode';
+import { workspace } from 'vscode';
 import { TextDecoder } from 'util';
 import type { TemplateLocation } from '../types';
 import { COLLIE_GLOB, COLLIE_EXCLUDE_GLOB, isCollieUri } from './exclude';

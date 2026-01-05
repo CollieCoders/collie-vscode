@@ -7,7 +7,7 @@ export async function runFeature(
 ) {
   try {
     const result = fn(featureContext);
-    if (result && typeof (result as Promise<void>).then === 'function') {
+    if (result && typeof (result).then === 'function') {
       await result;
     }
   } catch (error) {

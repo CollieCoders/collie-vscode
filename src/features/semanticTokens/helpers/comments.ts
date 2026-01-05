@@ -101,12 +101,12 @@ export function findMatchingParenOutsideStrings(lineText: string, openIndex: num
       continue;
     }
 
-    if (inSingle || inDouble) continue;
+    if (inSingle || inDouble) {continue;}
 
-    if (ch === '(') depth++;
+    if (ch === '(') {depth++;}
     else if (ch === ')') {
       depth--;
-      if (depth === 0) return i;
+      if (depth === 0) {return i;}
     }
   }
 

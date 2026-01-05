@@ -1,4 +1,5 @@
-import { Position, Range, Uri } from 'vscode';
+import type { Uri } from 'vscode';
+import { Position, Range } from 'vscode';
 import type { TemplateLocation } from '../types';
 
 const TEMPLATE_ID_PATTERN = /^[A-Za-z][A-Za-z0-9._-]*$/;
@@ -12,7 +13,7 @@ function getLineLength(lines: string[], lineIndex: number): number {
 
 export function parseTemplateBlocks(contents: string, uri: Uri): TemplateLocation[] {
   const lines = contents.split(/\r?\n/);
-  const idLines: Array<{ id: string; line: number; isValidId: boolean }> = [];
+  const idLines: { id: string; line: number; isValidId: boolean }[] = [];
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];

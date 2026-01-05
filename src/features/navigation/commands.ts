@@ -11,7 +11,7 @@ async function openCompiledHtmlPartial(context: FeatureContext) {
   const activeEditor = window.activeTextEditor;
 
   // Check if there's an active editor with a Collie file
-  if (!activeEditor || activeEditor.document.languageId !== 'collie') {
+  if (activeEditor?.document.languageId !== 'collie') {
     window.showWarningMessage('Please open a Collie template file to use this command.');
     return;
   }

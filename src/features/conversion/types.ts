@@ -1,4 +1,4 @@
-import { Uri } from 'vscode';
+import type { Uri } from 'vscode';
 
 export interface CollieWriteResult {
   uri: Uri;

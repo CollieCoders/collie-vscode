@@ -25,7 +25,7 @@ type SemanticTokenCustomizationValue = {
   rules?: Record<string, TokenCustomizationRule>;
 } | undefined;
 
-const tokenTypeSet = new Set<CollieSemanticTokenType>(collieSemanticTokenTypes as ReadonlyArray<CollieSemanticTokenType>);
+const tokenTypeSet = new Set<CollieSemanticTokenType>(collieSemanticTokenTypes as readonly CollieSemanticTokenType[]);
 
 function describeTarget(target: ConfigurationTarget) {
   return target === ConfigurationTarget.Workspace ? 'workspace' : 'user';

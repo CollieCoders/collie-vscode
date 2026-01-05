@@ -60,17 +60,17 @@ export function tokenizeEventHandlerKeysInAttrList(
       inDouble = !inDouble;
       continue;
     }
-    if (inSingle || inDouble) continue;
+    if (inSingle || inDouble) {continue;}
 
     // Look for word boundary + "on" + Capital letter: onClick, onSubmit, onMouseEnter, etc.
-    if (ch !== 'o') continue;
-    if (lineText[i + 1] !== 'n') continue;
+    if (ch !== 'o') {continue;}
+    if (lineText[i + 1] !== 'n') {continue;}
 
     const prev = i > 0 ? lineText[i - 1] : '';
-    if (prev && isWordChar(prev)) continue; // not a word boundary
+    if (prev && isWordChar(prev)) {continue;} // not a word boundary
 
     const third = lineText[i + 2];
-    if (!third || !/[A-Z]/.test(third)) continue; // require CamelCase event style
+    if (!third || !/[A-Z]/.test(third)) {continue;} // require CamelCase event style
 
     // Consume identifier
     let j = i + 2; // points at the capital letter
@@ -80,10 +80,10 @@ export function tokenizeEventHandlerKeysInAttrList(
 
     // Skip whitespace
     let k = j;
-    while (k < attrEnd && (lineText[k] === ' ' || lineText[k] === '\t')) k++;
+    while (k < attrEnd && (lineText[k] === ' ' || lineText[k] === '\t')) {k++;}
 
     // Must be followed by '='
-    if (k >= attrEnd || lineText[k] !== '=') continue;
+    if (k >= attrEnd || lineText[k] !== '=') {continue;}
 
     const start = i;
     const length = j - i; // exclude '='

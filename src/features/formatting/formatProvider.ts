@@ -10,7 +10,7 @@ function readFormatterOptions(): FormatterOptions {
     indentSize: Math.max(1, config.get<number>('format.indentSize', 2)),
     preferCompactSelectors: config.get<boolean>('format.preferCompactSelectors', true),
     spaceAroundPipe: config.get<boolean>('format.spaceAroundPipe', true),
-    normalizePropsSpacing: config.get<boolean>('format.normalizePropsSpacing', true),
+    normalizePropsSpacing: config.get<boolean>('format.normalizePropsSpacing', true)
   };
 }
 
@@ -21,11 +21,11 @@ async function provideFormattingEdits(
   ctx: FeatureContext
 ) {
   try {
-    if (token.isCancellationRequested) return [];
+    if (token.isCancellationRequested) {return [];}
 
     const result = formatDocument(document, readFormatterOptions());
 
-    if (token.isCancellationRequested) return [];
+    if (token.isCancellationRequested) {return [];}
 
     if (result.usedFallback) {
       ctx.logger.warn('Collie AST formatter failed; fallback formatter applied.', result.error);
@@ -44,7 +44,7 @@ export function registerFormatProvider(ctx: FeatureContext) {
     {
       provideDocumentFormattingEdits(document, options, token) {
         return provideFormattingEdits(document, options, token, ctx);
-      },
+      }
     }
   );
 

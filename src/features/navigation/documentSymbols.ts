@@ -1,5 +1,6 @@
 import { basename } from 'path';
-import { DocumentSymbol, languages, Range, SymbolKind, TextDocument } from 'vscode';
+import type { TextDocument } from 'vscode';
+import { DocumentSymbol, languages, Range, SymbolKind } from 'vscode';
 import type { FeatureContext } from '../types';
 import type { ElementNode, Node, ConditionalNode, ConditionalBranch, ForLoopNode, PropsDecl } from '../../format/parser/ast';
 import type { SourceSpan } from '../../format/parser/diagnostics';

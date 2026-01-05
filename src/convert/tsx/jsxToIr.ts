@@ -190,7 +190,7 @@ function collectConditionalBranches(
   sourceFile: ts.SourceFile,
   diagnostics: JsxConversionDiagnostics
 ) {
-  const branches: Array<{ test?: string; children: IrNode[] }> = [];
+  const branches: { test?: string; children: IrNode[] }[] = [];
   let current: ts.Expression = expression;
   let hasJsx = false;
 

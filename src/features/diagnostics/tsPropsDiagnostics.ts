@@ -1,9 +1,10 @@
+import type {
+  TextDocument} from 'vscode';
 import {
   Diagnostic as VSDiagnostic,
   DiagnosticSeverity,
   Range,
   RelativePattern,
-  TextDocument,
   languages,
   workspace,
   type Uri,
@@ -339,7 +340,7 @@ async function updateDiagnostics(
 
   const cacheKey = document.uri.toString();
   const cached = diagnosticsCache.get(cacheKey);
-  if (cached && cached.collieVersion === document.version && cached.workspaceVersion === workspaceUsageVersion) {
+  if (cached?.collieVersion === document.version && cached.workspaceVersion === workspaceUsageVersion) {
     collection.set(document.uri, cached.diagnostics);
     return;
   }
@@ -371,7 +372,7 @@ async function updateTemplateUsageDiagnostics(
 
   const cacheKey = document.uri.toString();
   const cached = templateUsageCache.get(cacheKey);
-  if (cached && cached.documentVersion === document.version && cached.templateIndexVersion === templateIndexVersion) {
+  if (cached?.documentVersion === document.version && cached.templateIndexVersion === templateIndexVersion) {
     collection.set(document.uri, cached.diagnostics);
     return;
   }

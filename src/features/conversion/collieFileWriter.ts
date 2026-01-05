@@ -1,4 +1,5 @@
-import { Uri, workspace } from 'vscode';
+import type { Uri} from 'vscode';
+import { workspace } from 'vscode';
 import type { CollieWriteResult, CollieTemplateMatch, CollieTemplateBlock } from './types';
 import {
   fileExists,
@@ -21,7 +22,7 @@ function parseTemplateBlocks(contents: string): CollieTemplateMatch[] {
   const lines = contents.split(/\r?\n/);
   const matches: CollieTemplateMatch[] = [];
 
-  const idLines: Array<{ id: string; line: number }> = [];
+  const idLines: { id: string; line: number }[] = [];
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
     const match = line.match(/^\s*#id\s+([^\s]+)/);
@@ -50,7 +51,7 @@ function parseTemplateBlocks(contents: string): CollieTemplateMatch[] {
 function parseTemplateBlockRanges(contents: string): TemplateBlockRange[] {
   const lines = contents.split(/\r?\n/);
   const blocks: TemplateBlockRange[] = [];
-  const idLines: Array<{ id: string; line: number }> = [];
+  const idLines: { id: string; line: number }[] = [];
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];

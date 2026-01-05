@@ -1,7 +1,8 @@
-import {
+import type {
   FileSystemWatcher,
+  Uri} from 'vscode';
+import {
   RelativePattern,
-  Uri,
   window,
   workspace,
   type ConfigurationChangeEvent,
@@ -166,10 +167,10 @@ export function getUnknownClassOverrideSetting(): 'inherit' | 'on' | 'off' {
   return 'inherit';
 }
 
-type CssIndexDecision = {
+interface CssIndexDecision {
   enable: boolean;
   reason: 'enabled' | 'no-collie-doc' | 'tailwind' | 'disabled' | 'override-off';
-};
+}
 
 async function shouldEnableCssIndex(folder: WorkspaceFolder, context: FeatureContext): Promise<CssIndexDecision> {
   const collieDocs = workspace.textDocuments.filter(

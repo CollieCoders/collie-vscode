@@ -33,7 +33,7 @@ function getEntry(document: TextDocument): CacheEntry | undefined {
 
 export function getParsedDocument(document: TextDocument): ParsedDocument {
   const cached = getEntry(document);
-  if (cached && cached.version === document.version) {
+  if (cached?.version === document.version) {
     return cached.parsed;
   }
 

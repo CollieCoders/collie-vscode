@@ -71,7 +71,7 @@ export async function getReferencedTemplateIds(): Promise<Set<string>> {
       const htmlRegex = new RegExp(HTML_PLACEHOLDER_PATTERN.source, 'g');
       while ((match = htmlRegex.exec(contents)) !== null) {
         const raw = match[1]?.trim();
-        if (!raw || !raw.endsWith('-collie')) {
+        if (!raw?.endsWith('-collie')) {
           continue;
         }
         const logicalId = raw.slice(0, -7);

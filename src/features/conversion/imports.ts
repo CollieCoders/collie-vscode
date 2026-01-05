@@ -1,5 +1,6 @@
 import * as ts from 'typescript';
-import { EndOfLine, TextDocument, WorkspaceEdit } from 'vscode';
+import type { TextDocument, WorkspaceEdit } from 'vscode';
+import { EndOfLine } from 'vscode';
 
 const COLLIE_MODULE = '@collie-lang/react';
 

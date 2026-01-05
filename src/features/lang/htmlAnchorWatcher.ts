@@ -1,4 +1,5 @@
-import { workspace, TextDocument } from 'vscode';
+import type { TextDocument } from 'vscode';
+import { workspace } from 'vscode';
 import type { FeatureContext } from '../types';
 import {
   scanWorkspaceHtmlFiles,

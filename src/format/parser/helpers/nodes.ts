@@ -204,7 +204,7 @@ export function parseElement(
       consumed += ws[0].length;
     }
 
-    if (rest.length === 0) break;
+    if (rest.length === 0) {break;}
 
     if (rest.startsWith('(')) {
       if (sawAttributeGroup) {

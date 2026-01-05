@@ -1,8 +1,9 @@
+import type {
+  Uri} from 'vscode';
 import {
   Position,
   Range,
   RelativePattern,
-  Uri,
   workspace,
   type WorkspaceFolder
 } from 'vscode';
@@ -63,8 +64,8 @@ function positionAt(offset: number, lineOffsets: number[]): Position {
   return new Position(line, offset - lineOffsets[line]);
 }
 
-function extractClassTokens(text: string): Array<{ name: string; start: number; length: number }> {
-  const matches: Array<{ name: string; start: number; length: number }> = [];
+function extractClassTokens(text: string): { name: string; start: number; length: number }[] {
+  const matches: { name: string; start: number; length: number }[] = [];
   CLASS_TOKEN_PATTERN.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = CLASS_TOKEN_PATTERN.exec(text)) !== null) {
@@ -77,10 +78,10 @@ function extractClassTokens(text: string): Array<{ name: string; start: number; 
   return matches;
 }
 
-type IndexResult = {
+interface IndexResult {
   indexed: boolean;
   limitReached: boolean;
-};
+}
 
 export class CssClassIndex {
   private readonly classDefinitions = new Map<string, CssClassDefinition[]>();

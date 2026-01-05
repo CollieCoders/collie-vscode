@@ -38,7 +38,7 @@ export function printCollieDocument(nodes: readonly IrNode[], options: ColliePri
     return '';
   }
 
-  return lines.join('\n') + '\n';
+  return `${lines.join('\n')  }\n`;
 }
 
 function printNode(node: IrNode, level: number, ctx: PrinterContext, out: string[]) {

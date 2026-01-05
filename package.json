@@ -19,7 +19,9 @@
     "watch": "node esbuild.config.mjs --watch",
     "vscode:prepublish": "npm run build",
     "package": "vsce package",
-    "lint": "tsc --noEmit"
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "type-check": "tsc --noEmit"
   },
   "activationEvents": [
     "onCommand:collie.convertToCollie",
@@ -318,11 +320,16 @@
     }
   },
   "devDependencies": {
+    "@eslint/js": "^9.18.0",
     "@types/node": "^25.0.3",
     "@types/vscode": "^1.87.0",
+    "@typescript-eslint/eslint-plugin": "^8.19.1",
+    "@typescript-eslint/parser": "^8.19.1",
     "@vscode/vsce": "^3.1.1",
     "esbuild": "^0.24.0",
-    "typescript": "^5.6.3"
+    "eslint": "^9.18.0",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.19.1"
   },
   "packageManager": "pnpm@10.26.2+sha512.0e308ff2005fc7410366f154f625f6631ab2b16b1d2e70238444dd6ae9d630a8482d92a451144debc492416896ed16f7b114a86ec68b8404b2443869e68ffda6"
 }

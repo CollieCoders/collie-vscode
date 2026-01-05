@@ -1,4 +1,5 @@
-import { ConfigurationTarget, QuickPickItem, window } from 'vscode';
+import type { QuickPickItem} from 'vscode';
+import { ConfigurationTarget, window } from 'vscode';
 import type { CollieSemanticTokenType } from '../semanticTokens/legend';
 import { collieSemanticTokenTypes } from '../semanticTokens/legend';
 
@@ -68,7 +69,7 @@ export async function promptTokenType(initial?: CollieSemanticTokenType): Promis
     return undefined;
   }
 
-  return selection.label as CollieSemanticTokenType;
+  return selection.label;
 }
 
 export async function promptColorValue(): Promise<string | undefined> {

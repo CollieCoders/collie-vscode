@@ -71,7 +71,7 @@ export function print(root: RootNode, options: PrintOptions = {}): string {
     printNode(child, 0, ctx, lines);
   }
 
-  return lines.join('\n') + '\n';
+  return `${lines.join('\n')  }\n`;
 }
 
 function printProps(props: PropsDecl, ctx: PrinterContext): string[] {
@@ -126,7 +126,7 @@ function printElement(node: ElementNode, level: number, ctx: PrinterContext, out
   const attributeLines = node.attributeLines ?? [];
 
   if (inlineText) {
-    line += ' ' + formatInlinePipe(inlineText, ctx.options);
+    line += ` ${  formatInlinePipe(inlineText, ctx.options)}`;
   }
 
   out.push(line);
@@ -176,7 +176,7 @@ function getInlineTextChild(node: ElementNode): TextNode | null {
 function printText(node: TextNode, level: number, ctx: PrinterContext, out: string[]) {
   const indent = createIndent(ctx, level);
   const payload = buildTextPayload(node);
-  let line = indent + '|';
+  let line = `${indent  }|`;
   if (payload) {
     line += ctx.options.spaceAroundPipe ? ` ${payload}` : payload;
   } else if (ctx.options.spaceAroundPipe) {
@@ -203,7 +203,7 @@ function printConditional(node: ConditionalNode, level: number, ctx: PrinterCont
 
     const inlineBody = formatInlineBranchBody(branch.body, ctx);
     if (inlineBody) {
-      line += ' ' + inlineBody;
+      line += ` ${  inlineBody}`;
       out.push(line);
       return;
     }
