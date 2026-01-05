@@ -17,7 +17,8 @@ export const collieSemanticTokenTypes = [
   'collieComponent',
   'collieSingleBraceInterpolation',
   'collieIdKeyword',
-  'collieIdValue'
+  'collieIdValue',
+  'collieEventHandler'
 ] as const;
 
 export type CollieSemanticTokenType = (typeof collieSemanticTokenTypes)[number];

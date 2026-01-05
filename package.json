@@ -271,23 +271,47 @@
       "editor.semanticTokenColorCustomizations": {
         "enabled": true,
         "rules": {
-          "collieTag": "#569CD6",
-          "collieClassShorthand": "#4EC9B0",
-          "collieDirective": "#C586C0",
+          "collieTag": {
+            "foreground": "#61AFEF"
+          },
+          "collieClassShorthand": {
+            "foreground": "#56B6C2"
+          },
+          "collieDirective": {
+            "foreground": "#C678DD"
+          },
           "colliePropsKeyword": {
-            "foreground": "#DDC144"
+            "foreground": "#C678DD"
           },
-          "colliePropsField": "#9CDCFE",
-          "collieInterpolation": "#CE9178",
-          "colliePipeText": "#D4D4D4",
-          "collieComment": "#6A9955",
+          "colliePropsField": {
+            "foreground": "#d59750"
+          },
+          "collieInterpolation": {
+            "foreground": "#e5d77b",
+            "fontStyle": "bold"
+          },
+          "colliePipeText": {
+            "foreground": "#D4D4D4"
+          },
+          "collieComment": {
+            "foreground": "#5C6370",
+            "fontStyle": "italic"
+          },
           "collieClassesKeyword": {
-            "foreground": "#DDC144"
+            "foreground": "#C678DD"
           },
-          "collieClassAliasName": "#4FC1FF",
-          "collieClassAliasUsage": "#4EC9B0",
+          "collieClassAliasName": {
+            "foreground": "#E06C75"
+          },
+          "collieClassAliasUsage": {
+            "foreground": "#56B6C2"
+          },
           "collieIdKeyword": {
-            "foreground": "#DDC144"
+            "foreground": "#C678DD"
+          },
+          "collieIdValue": {
+            "foreground": "#E06C75",
+            "fontStyle": "bold"
           }
         }
       }
