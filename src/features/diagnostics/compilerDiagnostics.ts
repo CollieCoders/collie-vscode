@@ -1,6 +1,6 @@
 import { Diagnostic as VSDiagnostic, DiagnosticSeverity, Range, type TextDocument } from 'vscode';
 import type { ParsedDocument } from '../../lang';
-import type { CollieConfigResult } from '../../config/collieConfig';
+import type { CollieConfigResult } from '../../config/types';
 
 interface FixPayload {
   range: Range;
