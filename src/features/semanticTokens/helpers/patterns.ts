@@ -1,0 +1,13 @@
+export const directivePattern = /^@(if|elseIf|else)\b/g;
+export const forLoopPattern = /^@for\s+([A-Za-z_][\w]*)\s+in\s+([A-Za-z_][\w.[\]]*)/g;
+export const classShorthandPattern = /\.(?:\$[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][\w-]*)/g;
+export const singleBracePattern = /(?<!\{)\{(?!\{).*?(?<!\})\}(?!\})/g;
+export const interpolationPattern = /\{\{.*?\}\}/g;
+export const idDirectivePattern = /^(\s*)(#?id)(?:\s+|:\s*|=\s*)(.+)$/i;
+export const propsKeywordPattern = /^(\s*)(#?props)\b/;
+export const propsFieldPattern = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:/;
+export const tagPattern = /^(\s*)([A-Za-z][A-Za-z0-9_$-]*)/;
+export const pipeTextPattern = /^(\s*)\|/;
+export const classesKeywordPattern = /^(\s*)(#?classes)\b/;
+export const classAliasLinePattern = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*=/;
+export const expressionLinePattern = /^(\s*)(=)\s+/;

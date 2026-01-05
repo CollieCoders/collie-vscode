@@ -1,36 +1,23 @@
-import type { CollieSemanticTokenType } from './legend';
+import type { CollieSemanticToken, TokenizerState } from './types';
+import {
+  classAliasLinePattern,
+  classesKeywordPattern,
+  classShorthandPattern,
+  directivePattern,
+  expressionLinePattern,
+  forLoopPattern,
+  idDirectivePattern,
+  interpolationPattern,
+  pipeTextPattern,
+  propsFieldPattern,
+  propsKeywordPattern,
+  singleBracePattern,
+  tagPattern
+} from './helpers/patterns';
+import { computeCommentSegments, findMatchingParenOutsideStrings } from './helpers/comments';
+import { clipTokenLength, overlaps, pushToken, tokenizeEventHandlerKeysInAttrList } from './helpers/tokens';
 
-export interface CollieSemanticToken {
-  line: number;
-  startCharacter: number;
-  length: number;
-  type: CollieSemanticTokenType;
-}
-
-interface TokenizerState {
-  inBlockComment: boolean;
-  propsIndent: number | null;
-  classesIndent: number | null;
-}
-
-interface Segment {
-  start: number;
-  end: number;
-}
-
-const directivePattern = /^@(if|elseIf|else)\b/g;
-const forLoopPattern = /^@for\s+([A-Za-z_][\w]*)\s+in\s+([A-Za-z_][\w.[\]]*)/g;
-const classShorthandPattern = /\.(?:\$[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][\w-]*)/g;
-const singleBracePattern = /(?<!\{)\{(?!\{).*?(?<!\})\}(?!\})/g;
-const interpolationPattern = /\{\{.*?\}\}/g;
-const idDirectivePattern = /^(\s*)(#?id)(?:\s+|:\s*|=\s*)(.+)$/i;
-const propsKeywordPattern = /^(\s*)(#?props)\b/;
-const propsFieldPattern = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:/;
-const tagPattern = /^(\s*)([A-Za-z][A-Za-z0-9_$-]*)/;
-const pipeTextPattern = /^(\s*)\|/;
-const classesKeywordPattern = /^(\s*)(#?classes)\b/;
-const classAliasLinePattern = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*=/;
-const expressionLinePattern = /^(\s*)(=)\s+/;
+export type { CollieSemanticToken } from './types';
 
 export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[] {
   const tokens: CollieSemanticToken[] = [];
@@ -396,218 +383,4 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
   });
 
   return tokens;
-}
-
-function computeCommentSegments(lineText: string, state: TokenizerState): Segment[] {
-  const segments: Segment[] = [];
-  let cursor = 0;
-
-  while (cursor < lineText.length) {
-    if (state.inBlockComment) {
-      const endIdx = lineText.indexOf('*/', cursor);
-      if (endIdx === -1) {
-        segments.push({ start: cursor, end: lineText.length });
-        cursor = lineText.length;
-        break;
-      } else {
-        const segmentEnd = endIdx + 2;
-        segments.push({ start: cursor, end: segmentEnd });
-        cursor = segmentEnd;
-        state.inBlockComment = false;
-      }
-    } else {
-      const blockStart = lineText.indexOf('/*', cursor);
-      const lineCommentIdx = findLineCommentOutsideStrings(lineText, cursor);
-
-      if (lineCommentIdx !== -1 && (blockStart === -1 || lineCommentIdx < blockStart)) {
-        break;
-      }
-
-      if (blockStart === -1) {
-        break;
-      }
-
-      const blockEnd = lineText.indexOf('*/', blockStart + 2);
-      if (blockEnd === -1) {
-        segments.push({ start: blockStart, end: lineText.length });
-        state.inBlockComment = true;
-        cursor = lineText.length;
-        break;
-      } else {
-        const segmentEnd = blockEnd + 2;
-        segments.push({ start: blockStart, end: segmentEnd });
-        cursor = segmentEnd;
-      }
-    }
-  }
-
-  // Line comment (//) outside block comments AND outside quoted strings.
-  const lineCommentIdx = findLineCommentOutsideStrings(lineText);
-  if (
-    lineCommentIdx !== -1 &&
-    !segments.some(segment => lineCommentIdx >= segment.start && lineCommentIdx < segment.end)
-  ) {
-    segments.push({ start: lineCommentIdx, end: lineText.length });
-  }
-
-  segments.sort((a, b) => a.start - b.start);
-  return segments;
-}
-
-function findLineCommentOutsideStrings(lineText: string, startIndex = 0): number {
-  let inSingle = false;
-  let inDouble = false;
-
-  for (let i = startIndex; i < lineText.length - 1; i++) {
-    const ch = lineText[i];
-    const next = lineText[i + 1];
-
-    // handle quote state (ignore escaped quotes)
-    if (!inDouble && ch === "'" && lineText[i - 1] !== '\\') {
-      inSingle = !inSingle;
-      continue;
-    }
-    if (!inSingle && ch === '"' && lineText[i - 1] !== '\\') {
-      inDouble = !inDouble;
-      continue;
-    }
-
-    // only recognize // when not inside quotes
-    if (!inSingle && !inDouble && ch === '/' && next === '/') {
-      return i;
-    }
-  }
-
-  return -1;
-}
-
-function findMatchingParenOutsideStrings(lineText: string, openIndex: number): number {
-  let inSingle = false;
-  let inDouble = false;
-  let depth = 0;
-
-  for (let i = openIndex; i < lineText.length; i++) {
-    const ch = lineText[i];
-
-    // quote toggles (ignore escaped quotes)
-    if (!inDouble && ch === "'" && lineText[i - 1] !== '\\') {
-      inSingle = !inSingle;
-      continue;
-    }
-    if (!inSingle && ch === '"' && lineText[i - 1] !== '\\') {
-      inDouble = !inDouble;
-      continue;
-    }
-
-    if (inSingle || inDouble) continue;
-
-    if (ch === '(') depth++;
-    else if (ch === ')') {
-      depth--;
-      if (depth === 0) return i;
-    }
-  }
-
-  return -1;
-}
-
-function tokenizeEventHandlerKeysInAttrList(
-  tokens: CollieSemanticToken[],
-  line: number,
-  lineText: string,
-  attrStart: number,
-  attrEnd: number,
-  commentSegments: Segment[]
-) {
-  let inSingle = false;
-  let inDouble = false;
-
-  const isWordChar = (c: string) => /[A-Za-z0-9_]/.test(c);
-
-  for (let i = attrStart; i < attrEnd; i++) {
-    const ch = lineText[i];
-
-    // quote state
-    if (!inDouble && ch === "'" && lineText[i - 1] !== '\\') {
-      inSingle = !inSingle;
-      continue;
-    }
-    if (!inSingle && ch === '"' && lineText[i - 1] !== '\\') {
-      inDouble = !inDouble;
-      continue;
-    }
-    if (inSingle || inDouble) continue;
-
-    // Look for word boundary + "on" + Capital letter: onClick, onSubmit, onMouseEnter, etc.
-    if (ch !== 'o') continue;
-    if (lineText[i + 1] !== 'n') continue;
-
-    const prev = i > 0 ? lineText[i - 1] : '';
-    if (prev && isWordChar(prev)) continue; // not a word boundary
-
-    const third = lineText[i + 2];
-    if (!third || !/[A-Z]/.test(third)) continue; // require CamelCase event style
-
-    // Consume identifier
-    let j = i + 2; // points at the capital letter
-    while (j < attrEnd && /[A-Za-z0-9_]/.test(lineText[j])) {
-      j++;
-    }
-
-    // Skip whitespace
-    let k = j;
-    while (k < attrEnd && (lineText[k] === ' ' || lineText[k] === '\t')) k++;
-
-    // Must be followed by '='
-    if (k >= attrEnd || lineText[k] !== '=') continue;
-
-    const start = i;
-    const length = j - i; // exclude '='
-    if (!overlaps(commentSegments, start, length)) {
-      pushToken(tokens, {
-        line,
-        startCharacter: start,
-        length,
-        type: 'collieEventHandler'
-      });
-    }
-
-    // move forward
-    i = j - 1;
-  }
-}
-
-function overlaps(segments: Segment[], start: number, length: number): boolean {
-  if (length <= 0) {
-    return true;
-  }
-  const end = start + length;
-  return segments.some(segment => start < segment.end && end > segment.start);
-}
-
-function clipTokenLength(segments: Segment[], start: number, length: number): number {
-  if (length <= 0) {
-    return 0;
-  }
-  const end = start + length;
-  for (const segment of segments) {
-    if (segment.end <= start) {
-      continue;
-    }
-    if (segment.start <= start) {
-      return 0;
-    }
-    if (segment.start < end) {
-      return Math.max(0, segment.start - start);
-    }
-    break;
-  }
-  return length;
-}
-
-function pushToken(tokens: CollieSemanticToken[], token: CollieSemanticToken) {
-  if (token.length <= 0) {
-    return;
-  }
-  tokens.push(token);
 }
