@@ -2,7 +2,6 @@ import {
   Diagnostic as VSDiagnostic,
   DiagnosticSeverity,
   languages,
-  Position,
   Range,
   workspace
 } from 'vscode';
@@ -17,82 +16,22 @@ import { collectCompilerDiagnostics } from './compilerDiagnostics';
 import { onDidChangeCollieConfig, resolveCollieConfigForDocument } from '../../config/collieConfig';
 import { getCssClassIndexForDocument, getUnknownClassOverrideSetting } from '../css/indexer';
 import type { Node } from '../../format/parser/ast';
-import { TextDecoder } from 'util';
+import { spanToRange } from './helpers/ranges';
+import { SUPPORTED_DIRECTIVES, DIALECT_DIRECTIVE_ALIASES } from './helpers/directives';
+import { invalidateTemplateEntryCache, getTemplateEntriesById } from './helpers/cache';
+import {
+  invalidateTemplateUsageCache,
+  isTemplateUsageDocument,
+  getReferencedTemplateIds
+} from './helpers/templateUsage';
 
-const SUPPORTED_DIRECTIVES = new Set(['@if', '@elseIf', '@else', '@for']);
-const DIALECT_DIRECTIVE_ALIASES = new Set(['@elseif', '@else-if']);
 const DIAGNOSTIC_DEBOUNCE_MS = 200;
 const REFRESH_DEBOUNCE_MS = 250;
 const REFRESH_OPEN_DOCS_KEY = '__collie_refresh_open_docs__';
-const COLLIE_GLOB = '**/*.collie';
-const COLLIE_EXCLUDE_GLOB = '**/{node_modules,dist,build,out,coverage,.git}/**';
-const TEMPLATE_USAGE_GLOB = '**/*.{ts,tsx,js,jsx,html}';
-const TEMPLATE_USAGE_EXCLUDE_GLOB = '**/{node_modules,dist,build,out,coverage,.git}/**';
-const COLLIE_COMPONENT_PATTERN = /<Collie\b[^>]*\bid\s*=\s*["']([^"']+)["']/g;
-const HTML_PLACEHOLDER_PATTERN = /\bid\s*=\s*["']([^"']*-collie)["']/g;
 const pendingDiagnostics = new Map<string, ReturnType<typeof setTimeout>>();
-let templateIndexVersion = 0;
-let cachedTemplateEntriesVersion = -1;
-let cachedTemplateEntries: Map<string, TemplateLocation[]> = new Map();
-let cachedTemplateEntriesPromise: Promise<Map<string, TemplateLocation[]>> | null = null;
-let templateUsageVersion = 0;
-let cachedTemplateUsageVersion = -1;
-let cachedReferencedIds: Set<string> = new Set();
-let cachedReferencedIdsPromise: Promise<Set<string>> | null = null;
-const textDecoder = new TextDecoder('utf-8');
-
-function invalidateTemplateEntryCache(): void {
-  templateIndexVersion += 1;
-  cachedTemplateEntriesVersion = -1;
-  cachedTemplateEntries.clear();
-  cachedTemplateEntriesPromise = null;
-}
-
-function invalidateTemplateUsageCache(): void {
-  templateUsageVersion += 1;
-  cachedTemplateUsageVersion = -1;
-  cachedReferencedIds.clear();
-  cachedReferencedIdsPromise = null;
-}
 
 function shouldHandleDocument(document: TextDocument): boolean {
   return document.languageId === 'collie';
-}
-
-function isTemplateUsageDocument(document: TextDocument): boolean {
-  if (document.uri.scheme !== 'file') {
-    return false;
-  }
-  const languageId = document.languageId;
-  if (
-    languageId === 'typescript' ||
-    languageId === 'typescriptreact' ||
-    languageId === 'javascript' ||
-    languageId === 'javascriptreact' ||
-    languageId === 'html'
-  ) {
-    return true;
-  }
-  return document.fileName.endsWith('.html');
-}
-
-function spanToRange(document: TextDocument, span?: SourceSpan): Range {
-  if (!span) {
-    return new Range(0, 0, 0, 0);
-  }
-  const start = spanPositionToVs(document, span.start);
-  const end = spanPositionToVs(document, span.end);
-  return new Range(start, end);
-}
-
-function spanPositionToVs(document: TextDocument, pos: SourceSpan['start']): Position {
-  const lineIndex = Math.min(
-    Math.max(pos.line - 1, 0),
-    Math.max(document.lineCount - 1, 0)
-  );
-  const lineText = document.lineAt(lineIndex).text;
-  const character = Math.min(Math.max(pos.col - 1, 0), lineText.length);
-  return new Position(lineIndex, character);
 }
 
 function convertParserDiagnostic(document: TextDocument, diagnostic: ParserDiagnostic): VSDiagnostic {
@@ -197,90 +136,6 @@ function collectUnknownDirectiveDiagnostics(document: TextDocument): VSDiagnosti
   }
 
   return diagnostics;
-}
-
-async function getTemplateEntriesById(): Promise<Map<string, TemplateLocation[]>> {
-  if (cachedTemplateEntriesVersion === templateIndexVersion) {
-    return cachedTemplateEntries;
-  }
-
-  if (cachedTemplateEntriesPromise) {
-    return cachedTemplateEntriesPromise;
-  }
-
-  cachedTemplateEntriesPromise = (async () => {
-    const entriesById = new Map<string, TemplateLocation[]>();
-    const files = await workspace.findFiles(COLLIE_GLOB, COLLIE_EXCLUDE_GLOB);
-
-    for (const uri of files) {
-      const entries = listByFile(uri);
-      for (const entry of entries) {
-        const existing = entriesById.get(entry.id) ?? [];
-        existing.push(entry);
-        entriesById.set(entry.id, existing);
-      }
-    }
-
-    cachedTemplateEntries = entriesById;
-    cachedTemplateEntriesVersion = templateIndexVersion;
-    cachedTemplateEntriesPromise = null;
-    return entriesById;
-  })();
-
-  return cachedTemplateEntriesPromise;
-}
-
-async function getReferencedTemplateIds(): Promise<Set<string>> {
-  if (cachedTemplateUsageVersion === templateUsageVersion) {
-    return cachedReferencedIds;
-  }
-
-  if (cachedReferencedIdsPromise) {
-    return cachedReferencedIdsPromise;
-  }
-
-  cachedReferencedIdsPromise = (async () => {
-    const referenced = new Set<string>();
-    const files = await workspace.findFiles(TEMPLATE_USAGE_GLOB, TEMPLATE_USAGE_EXCLUDE_GLOB);
-
-    for (const uri of files) {
-      let contents = '';
-      try {
-        const data = await workspace.fs.readFile(uri);
-        contents = textDecoder.decode(data);
-      } catch {
-        continue;
-      }
-
-      let match: RegExpExecArray | null;
-      const componentRegex = new RegExp(COLLIE_COMPONENT_PATTERN.source, 'g');
-      while ((match = componentRegex.exec(contents)) !== null) {
-        const id = match[1]?.trim();
-        if (id) {
-          referenced.add(id);
-        }
-      }
-
-      const htmlRegex = new RegExp(HTML_PLACEHOLDER_PATTERN.source, 'g');
-      while ((match = htmlRegex.exec(contents)) !== null) {
-        const raw = match[1]?.trim();
-        if (!raw || !raw.endsWith('-collie')) {
-          continue;
-        }
-        const logicalId = raw.slice(0, -7);
-        if (logicalId) {
-          referenced.add(logicalId);
-        }
-      }
-    }
-
-    cachedReferencedIds = referenced;
-    cachedTemplateUsageVersion = templateUsageVersion;
-    cachedReferencedIdsPromise = null;
-    return referenced;
-  })();
-
-  return cachedReferencedIdsPromise;
 }
 
 function formatTemplateLocation(entry: TemplateLocation): string {
