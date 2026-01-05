@@ -13,7 +13,7 @@ import {
   EndOfLine
 } from 'vscode';
 import { TextDecoder } from 'util';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import type { IrNode } from '../../convert/ir/nodes';
 import { printCollieDocument } from '../../convert/collie/print';
 import { convertJsxNodesToIr } from '../../convert/tsx/jsxToIr';

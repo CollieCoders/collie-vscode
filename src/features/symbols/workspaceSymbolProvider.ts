@@ -1,6 +1,6 @@
 import { languages, Location, SymbolInformation, SymbolKind, type CancellationToken } from 'vscode';
 import * as path from 'path';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import { getById, listIds } from '../../lang/templateIndex';
 import { isFeatureFlagEnabled } from '../featureFlags';
 

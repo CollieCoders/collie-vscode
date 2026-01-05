@@ -1,5 +1,5 @@
 import { CompletionItem, CompletionItemKind, languages, MarkdownString, Position, TextDocument } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import { getAllTemplateIds } from '../../lang/cache';
 import { isFeatureFlagEnabled } from '../featureFlags';
 

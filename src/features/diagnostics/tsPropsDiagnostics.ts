@@ -9,7 +9,7 @@ import {
   type Uri,
   type WorkspaceFolder
 } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import { getParsedDocument } from '../../lang/cache';
 import { onDidChangeCollieConfig, resolveCollieConfigForDocument } from '../../config/collieConfig';
 import { listIds, onDidChangeTemplateIndex } from '../../lang/templateIndex';

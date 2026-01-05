@@ -7,7 +7,7 @@ import {
   languages,
   workspace
 } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import { getById, listIds } from '../../lang/templateIndex';
 import { isFeatureFlagEnabled } from '../featureFlags';
 import * as ts from 'typescript';

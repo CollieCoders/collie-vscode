@@ -1,13 +1,7 @@
-import type { Disposable, ExtensionContext } from 'vscode';
+import type { ExtensionContext } from 'vscode';
 import type { Logger } from '../logger';
-
-export interface FeatureContext {
-  readonly extensionContext: ExtensionContext;
-  readonly logger: Logger;
-  register<T extends Disposable>(disposable: T): T;
-}
-
-export type FeatureRegistration = (context: FeatureContext) => void | Promise<void>;
+import type { FeatureContext } from './types';
+import { runFeature } from './helpers';
 
 export async function activateFeatures(
   extensionContext: ExtensionContext,
@@ -22,50 +16,39 @@ export async function activateFeatures(
     }
   };
 
-  async function runFeature(name: string, fn: FeatureRegistration) {
-    try {
-      const result = fn(featureContext);
-      if (result && typeof (result as Promise<void>).then === 'function') {
-        await result;
-      }
-    } catch (error) {
-      logger.error(`Collie feature activation failed (${name}).`, error);
-    }
-  }
+  await runFeature('featureFlags', registerFeatureFlagWatcher, featureContext);
 
-  await runFeature('featureFlags', registerFeatureFlagWatcher);
+  await runFeature('formatting/formatProvider', registerFormatProvider, featureContext);
+  await runFeature('semanticTokens/provider', registerSemanticTokensProvider, featureContext);
 
-  await runFeature('formatting/formatProvider', registerFormatProvider);
-  await runFeature('semanticTokens/provider', registerSemanticTokensProvider);
+  await runFeature('navigation/documentSymbols', registerDocumentSymbols, featureContext);
+  await runFeature('navigation/definitionProvider', registerDefinitionProvider, featureContext);
+  await runFeature('navigation/htmlToCollieDefinitionProvider', registerHtmlToCollieDefinitionProvider, featureContext);
+  await runFeature('navigation/commands', registerNavigationCommands, featureContext);
 
-  await runFeature('navigation/documentSymbols', registerDocumentSymbols);
-  await runFeature('navigation/definitionProvider', registerDefinitionProvider);
-  await runFeature('navigation/htmlToCollieDefinitionProvider', registerHtmlToCollieDefinitionProvider);
-  await runFeature('navigation/commands', registerNavigationCommands);
+  await runFeature('diagnostics/provider', registerDiagnosticsProvider, featureContext);
+  await runFeature('diagnostics/codeActions', registerDiagnosticsCodeActions, featureContext);
+  await runFeature('diagnostics/tsPropsDiagnostics', registerTsPropsDiagnostics, featureContext);
 
-  await runFeature('diagnostics/provider', registerDiagnosticsProvider);
-  await runFeature('diagnostics/codeActions', registerDiagnosticsCodeActions);
-  await runFeature('diagnostics/tsPropsDiagnostics', registerTsPropsDiagnostics);
+  await runFeature('hover/provider', registerHoverProvider, featureContext);
 
-  await runFeature('hover/provider', registerHoverProvider);
+  await runFeature('completions/provider', registerCompletionsProvider, featureContext);
+  await runFeature('completions/collieIdProvider', registerCollieIdCompletionProvider, featureContext);
+  await runFeature('completions/htmlCollieIdProvider', registerHtmlCollieIdProvider, featureContext);
 
-  await runFeature('completions/provider', registerCompletionsProvider);
-  await runFeature('completions/collieIdProvider', registerCollieIdCompletionProvider);
-  await runFeature('completions/htmlCollieIdProvider', registerHtmlCollieIdProvider);
+  await runFeature('symbols/workspaceSymbolProvider', registerWorkspaceSymbolProvider, featureContext);
 
-  await runFeature('symbols/workspaceSymbolProvider', registerWorkspaceSymbolProvider);
+  await runFeature('lang/templateIndex', registerTemplateIndex, featureContext);
+  await runFeature('lang/cacheWatcher', registerLangCacheWatcher, featureContext);
 
-  await runFeature('lang/templateIndex', registerTemplateIndex);
-  await runFeature('lang/cacheWatcher', registerLangCacheWatcher);
+  await runFeature('config/discovery', registerConfigDiscovery, featureContext);
 
-  await runFeature('config/discovery', registerConfigDiscovery);
+  await runFeature('css/indexer', registerCssIndexer, featureContext);
+  await runFeature('css/commands', registerCssCommands, featureContext);
 
-  await runFeature('css/indexer', registerCssIndexer);
-  await runFeature('css/commands', registerCssCommands);
+  await runFeature('customization/commands', registerCustomizationCommands, featureContext);
 
-  await runFeature('customization/commands', registerCustomizationCommands);
-
-  await runFeature('conversion/commands', registerConversionCommands);
+  await runFeature('conversion/commands', registerConversionCommands, featureContext);
 }
 
 import { registerFeatureFlagWatcher } from './featureFlags';

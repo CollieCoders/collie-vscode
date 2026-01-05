@@ -1,5 +1,5 @@
 import { languages, Location, Position, Range, Uri, type DefinitionLink, type TextDocument } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import { findTemplatesByLogicalId, getLogicalIdFromHtmlIdAttribute } from '../../lang/navigation';
 import { isFeatureFlagEnabled } from '../featureFlags';
 

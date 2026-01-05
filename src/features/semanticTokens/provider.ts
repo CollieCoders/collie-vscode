@@ -1,6 +1,6 @@
 import type { SemanticTokens, TextDocument, CancellationToken } from 'vscode';
 import { languages, SemanticTokensBuilder, workspace } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import { CollieSemanticTokenType, collieSemanticTokenTypes, collieSemanticTokensLegend } from './legend';
 import { tokenizeCollieSemanticTokens } from './tokenize';
 import type { CollieSemanticToken } from './tokenize';

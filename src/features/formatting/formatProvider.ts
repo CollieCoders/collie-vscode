@@ -1,6 +1,6 @@
 import { languages, workspace } from 'vscode';
 import type { TextDocument, FormattingOptions, CancellationToken } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import { formatDocument } from '../../format/formatter';
 import type { FormatterOptions } from '../../format/formatter';
 

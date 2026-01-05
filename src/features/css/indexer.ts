@@ -8,7 +8,7 @@ import {
   type TextDocument,
   type WorkspaceFolder
 } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import { onDidChangeCollieConfig, resolveCollieConfigForDocument } from '../../config/collieConfig';
 import { CssClassIndex, getCssIncludeGlob, isExcludedCssPath, isSupportedCssFile } from './classIndex';
 

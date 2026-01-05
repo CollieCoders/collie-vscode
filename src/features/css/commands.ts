@@ -1,5 +1,5 @@
 import { commands, window, workspace, ConfigurationTarget, type TextDocument, type WorkspaceFolder } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import { resolveCollieConfigForDocument } from '../../config/collieConfig';
 import {
   getUnknownClassOverrideSetting,

@@ -1,5 +1,5 @@
 import { commands } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 
 // Alias commands exist only to provide short context-menu titles.
 // They forward to the canonical implementations.

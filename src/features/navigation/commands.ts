@@ -1,6 +1,6 @@
 import { commands, Uri, window, workspace } from 'vscode';
 import * as path from 'path';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import { getParsedDocument } from '../../lang/cache';
 
 /**

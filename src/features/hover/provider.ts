@@ -1,6 +1,6 @@
 import { Hover, MarkdownString, languages, TextDocument } from 'vscode';
 import type { Position } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import type {
   ClassAliasDecl,
   ConditionalNode,

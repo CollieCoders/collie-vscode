@@ -1,5 +1,5 @@
 import { workspace, TextDocument } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import {
   scanWorkspaceHtmlFiles,
   updateHtmlAnchors,

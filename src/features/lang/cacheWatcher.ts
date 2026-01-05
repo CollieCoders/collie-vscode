@@ -1,5 +1,5 @@
 import { workspace } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import { clearParsedDocuments, invalidateParsedDocument } from '../../lang/cache';
 
 export function registerLangCacheWatcher(context: FeatureContext) {

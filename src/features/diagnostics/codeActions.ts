@@ -14,7 +14,7 @@ import {
   workspace
 } from 'vscode';
 import type { Diagnostic } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import { listByFile, onDidChangeTemplateIndex, type TemplateLocation } from '../../lang/templateIndex';
 
 const ID_DIRECTIVE_PATTERN = /^(?:#|)id(?:\s+|:\s*|=\s*)(.+)$/i;

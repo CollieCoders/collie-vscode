@@ -1,5 +1,5 @@
 import { EventEmitter, workspace } from 'vscode';
-import type { FeatureContext } from '.';
+import type { FeatureContext } from './types';
 
 export type CollieFeatureFlag = 'diagnostics' | 'completions' | 'navigation' | 'hover';
 

@@ -1,5 +1,5 @@
 import { RelativePattern, window, workspace, type TextDocument } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import { resolveCollieConfigForDocument } from '../../config/collieConfig';
 
 const WARNED_KEYS_STORAGE = 'collie.warnedKeys';

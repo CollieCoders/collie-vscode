@@ -1,5 +1,5 @@
 import { commands, ConfigurationTarget, env, window, workspace } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import type { CollieSemanticTokenType } from '../semanticTokens/legend';
 import { collieSemanticTokenTypes } from '../semanticTokens/legend';
 import type { TokenCustomizationRule } from './settingsWriter';

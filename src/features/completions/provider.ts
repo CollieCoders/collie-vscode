@@ -10,7 +10,7 @@ import {
   workspace
 } from 'vscode';
 import { dirname, extname, basename } from 'path';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import type { ClassAliasesDecl, Node } from '../../format/parser/ast';
 import type { ParsedDocument } from '../../lang';
 import { getParsedDocument } from '../../lang/cache';

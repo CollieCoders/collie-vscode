@@ -1,6 +1,6 @@
 import { dirname, join } from 'path';
 import { FileType, Location, Position, Range, Uri, languages, TextDocument, workspace, type DefinitionLink } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import type { ElementNode, Node } from '../../format/parser/ast';
 import type { SourceSpan } from '../../format/parser/diagnostics';
 import { getParsedDocument } from '../../lang/cache';

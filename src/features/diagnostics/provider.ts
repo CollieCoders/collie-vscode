@@ -7,7 +7,7 @@ import {
   workspace
 } from 'vscode';
 import type { TextDocument } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import { getParsedDocument, invalidateParsedDocument } from '../../lang/cache';
 import { listByFile, onDidChangeTemplateIndex, type TemplateLocation } from '../../lang/templateIndex';
 import type { ParsedDocument } from '../../lang';
