@@ -92,5 +92,6 @@ export interface PropsField {
   name: string;
   optional: boolean;
   typeText: string;
+  kind?: 'fn' | 'value';
   span?: SourceSpan;
 }

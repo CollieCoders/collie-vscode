@@ -89,7 +89,7 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
     const parseResult = parseJsxSelection(selection.text);
     const conversion = convertJsxNodesToIr(parseResult.rootNodes, parseResult.sourceFile);
     const collieText = printCollieDocument(conversion.nodes);
-    const propNames = collectIdentifiersFromIrNodes(conversion.nodes);
+    const propKinds = collectIdentifiersFromIrNodes(conversion.nodes);
     const warnings = conversion.diagnostics.warnings;
     const extractedSelection = parseResult.selectionText !== selection.text;
     logSelection(
@@ -112,9 +112,10 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
       collieText,
       templateId,
       targetUri,
-      propNames
+      propKinds
     );
     if (created) {
+      const propNames = Array.from(propKinds.keys());
       const applied = await applyTsxEdits(selection, created.templateId, propNames);
       const filename = basename(created.uri.fsPath);
       const action = created.wasCreated ? 'Created' : 'Updated';
@@ -218,7 +219,7 @@ async function deliverCollieOutput(
   collieText: string,
   templateId: string,
   targetUri: Uri | undefined,
-  propNames: string[]
+  propKinds: Map<string, PropKindInfo>
 ): Promise<CollieCreationResult | null> {
   if (!collieText.trim()) {
     window.showWarningMessage('Collie conversion produced empty output. Nothing to deliver.');
@@ -236,7 +237,7 @@ async function deliverCollieOutput(
     templateId,
     collieText,
     document.eol === EndOfLine.CRLF ? '\r\n' : '\n',
-    propNames
+    propKinds
   );
   await openCollieDocumentAt(result.uri, result.idLine);
   return { uri: result.uri, templateId, idLine: result.idLine, wasCreated: result.wasCreated };
@@ -449,8 +450,12 @@ function buildCollieComponentReplacement(templateId: string, propNames: string[]
   return `<Collie id="${templateId}" ${props} />`;
 }
 
-function collectIdentifiersFromIrNodes(nodes: readonly IrNode[]): string[] {
-  const names = new Set<string>();
+interface PropKindInfo {
+  kind: 'fn' | 'value';
+}
+
+function collectIdentifiersFromIrNodes(nodes: readonly IrNode[]): Map<string, PropKindInfo> {
+  const names = new Map<string, Set<'call' | 'event' | 'arrow' | 'ref'>>();
 
   const visit = (node: IrNode): void => {
     switch (node.kind) {
@@ -458,10 +463,11 @@ function collectIdentifiersFromIrNodes(nodes: readonly IrNode[]): string[] {
         for (const prop of node.props) {
           if (prop.kind === 'prop') {
             if (prop.value) {
-              collectIdentifiersFromExpressionText(prop.value, names);
+              const isEventHandler = /^on[A-Z]/.test(prop.name);
+              collectIdentifiersFromExpressionText(prop.value, names, isEventHandler);
             }
           } else {
-            collectIdentifiersFromExpressionText(prop.expressionText, names);
+            collectIdentifiersFromExpressionText(prop.expressionText, names, false);
           }
         }
         for (const child of node.children) {
@@ -471,7 +477,7 @@ function collectIdentifiersFromIrNodes(nodes: readonly IrNode[]): string[] {
       case 'text':
         break;
       case 'expression':
-        collectIdentifiersFromExpressionText(node.expressionText, names);
+        collectIdentifiersFromExpressionText(node.expressionText, names, false);
         break;
       case 'fragment':
         for (const child of node.children) {
@@ -481,7 +487,7 @@ function collectIdentifiersFromIrNodes(nodes: readonly IrNode[]): string[] {
       case 'conditional':
         for (const branch of node.branches) {
           if (branch.test) {
-            collectIdentifiersFromExpressionText(branch.test, names);
+            collectIdentifiersFromExpressionText(branch.test, names, false);
           }
           for (const child of branch.children) {
             visit(child);
@@ -499,10 +505,23 @@ function collectIdentifiersFromIrNodes(nodes: readonly IrNode[]): string[] {
     visit(node);
   }
 
-  return Array.from(names);
+  const result = new Map<string, PropKindInfo>();
+  for (const [name, usages] of names.entries()) {
+    if (usages.has('call') || usages.has('event') || usages.has('arrow')) {
+      result.set(name, { kind: 'fn' });
+    } else {
+      result.set(name, { kind: 'value' });
+    }
+  }
+
+  return result;
 }
 
-function collectIdentifiersFromExpressionText(expressionText: string, names: Set<string>): void {
+function collectIdentifiersFromExpressionText(
+  expressionText: string,
+  names: Map<string, Set<'call' | 'event' | 'arrow' | 'ref'>>,
+  isEventHandler: boolean
+): void {
   const normalized = normalizeExpressionText(expressionText);
   if (!normalized) {
     return;
@@ -524,7 +543,7 @@ function collectIdentifiersFromExpressionText(expressionText: string, names: Set
     return;
   }
 
-  collectIdentifiersFromExpression(declaration.initializer, names);
+  collectIdentifiersFromExpression(declaration.initializer, names, isEventHandler);
 }
 
 function normalizeExpressionText(expressionText: string): string | null {
@@ -544,36 +563,68 @@ function normalizeExpressionText(expressionText: string): string | null {
   return trimmed || null;
 }
 
-function collectIdentifiersFromExpression(expression: ts.Expression, names: Set<string>): void {
-  const visit = (node: ts.Node): void => {
+function collectIdentifiersFromExpression(
+  expression: ts.Expression,
+  names: Map<string, Set<'call' | 'event' | 'arrow' | 'ref'>>,
+  isEventHandler: boolean
+): void {
+  const visit = (node: ts.Node, isCalleeContext: boolean = false, isArrowBody: boolean = false): void => {
     if (ts.isIdentifier(node)) {
       if (isIdentifierReference(node)) {
         if (node.text !== 'props') {
-          names.add(node.text);
+          const usages = names.get(node.text) || new Set();
+          if (isCalleeContext) {
+            usages.add('call');
+          } else if (isEventHandler) {
+            usages.add('event');
+          } else if (isArrowBody) {
+            usages.add('arrow');
+          } else {
+            usages.add('ref');
+          }
+          names.set(node.text, usages);
         }
       }
       return;
     }
 
+    if (ts.isCallExpression(node)) {
+      visit(node.expression, true, isArrowBody);
+      for (const arg of node.arguments) {
+        visit(arg, false, isArrowBody);
+      }
+      return;
+    }
+
+    if (ts.isArrowFunction(node)) {
+      const body = node.body;
+      if (ts.isCallExpression(body)) {
+        visit(body, false, true);
+      } else {
+        visit(body, false, false);
+      }
+      return;
+    }
+
     if (ts.isPropertyAccessExpression(node)) {
-      visit(node.expression);
+      visit(node.expression, false, isArrowBody);
       return;
     }
 
     if (ts.isElementAccessExpression(node)) {
-      visit(node.expression);
+      visit(node.expression, false, isArrowBody);
       if (node.argumentExpression) {
-        visit(node.argumentExpression);
+        visit(node.argumentExpression, false, isArrowBody);
       }
       return;
     }
 
     if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
-      visit(node.expression);
+      visit(node.expression, false, isArrowBody);
       return;
     }
 
-    ts.forEachChild(node, visit);
+    ts.forEachChild(node, (child) => visit(child, false, isArrowBody));
   };
 
   visit(expression);

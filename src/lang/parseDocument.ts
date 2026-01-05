@@ -208,16 +208,38 @@ function parseHashPropsDeclaration(
       }
 
       const content = line.text.slice(indent);
-      const match = content.match(/^([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:\s*(.+)$/);
-      if (!match) {
+      
+      // Try to match new syntax: name or name()
+      const newSyntaxMatch = content.match(/^([A-Za-z_][A-Za-z0-9_]*)(\(\))?$/);
+      if (newSyntaxMatch) {
+        const name = newSyntaxMatch[1];
+        const hasFnSuffix = newSyntaxMatch[2] === '()';
+        const span = buildSpan(document, lineIndex, indent, content.length);
+        fields.push({
+          name,
+          optional: false,
+          typeText: '',
+          kind: hasFnSuffix ? 'fn' : 'value',
+          span
+        });
         continue;
       }
 
-      const name = match[1];
-      const optional = match[2] === '?';
-      const typeText = match[3].trim();
+      // Try to match legacy syntax: name?: type or name: type
+      const legacyMatch = content.match(/^([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:\s*(.+)$/);
+      if (!legacyMatch) {
+        continue;
+      }
+
+      const name = legacyMatch[1];
+      const optional = legacyMatch[2] === '?';
+      const typeText = legacyMatch[3].trim();
       const span = buildSpan(document, lineIndex, indent, content.length);
-      fields.push({ name, optional, typeText, span });
+      
+      // Normalize legacy 'fn' type to kind
+      const kind = typeText === 'fn' ? 'fn' : 'value';
+      
+      fields.push({ name, optional, typeText, kind, span });
     }
   }
 

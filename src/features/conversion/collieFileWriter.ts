@@ -126,25 +126,33 @@ export async function listTemplateBlocks(uri: Uri): Promise<CollieTemplateBlock[
   }));
 }
 
-function normalizePropNames(names: Iterable<string>): string[] {
+interface PropInfo {
+  name: string;
+  kind: 'fn' | 'value';
+}
+
+function normalizePropNames(propKinds: Map<string, { kind: 'fn' | 'value' }>): PropInfo[] {
   const seen = new Set<string>();
-  const normalized: string[] = [];
-  for (const name of names) {
+  const normalized: PropInfo[] = [];
+  for (const [name, info] of propKinds.entries()) {
     const trimmed = name.trim();
     if (!trimmed || !PROP_NAME_PATTERN.test(trimmed) || seen.has(trimmed)) {
       continue;
     }
     seen.add(trimmed);
-    normalized.push(trimmed);
+    normalized.push({ name: trimmed, kind: info.kind });
   }
   return normalized;
 }
 
-function buildPropsBlock(propNames: string[], eol: string): string {
-  if (propNames.length === 0) {
+function buildPropsBlock(props: PropInfo[], eol: string): string {
+  if (props.length === 0) {
     return '';
   }
-  const lines = ['#props', ...propNames.map(name => `  ${name}`)];
+  const lines = [
+    '#props',
+    ...props.map(prop => `  ${prop.name}${prop.kind === 'fn' ? '()' : ''}`)
+  ];
   return lines.join(eol);
 }
 
@@ -152,10 +160,10 @@ function buildTemplateBlock(
   templateId: string,
   collieText: string,
   eol: string,
-  propNames: string[]
+  props: PropInfo[]
 ): string {
   const body = collieText.trimEnd();
-  const propsBlock = buildPropsBlock(propNames, eol);
+  const propsBlock = buildPropsBlock(props, eol);
   const parts: string[] = [`#id ${templateId}`];
   if (propsBlock) {
     parts.push('', propsBlock, '');
@@ -175,7 +183,7 @@ export async function writeTemplateBlock(
   templateId: string,
   collieText: string,
   fallbackEol: string,
-  propNames: string[] = []
+  propKinds: Map<string, { kind: 'fn' | 'value' }> = new Map()
 ): Promise<CollieWriteResult> {
   const exists = await fileExists(targetUri);
   let existingText = '';
@@ -185,7 +193,7 @@ export async function writeTemplateBlock(
   }
 
   const eol = resolveEol(existingText, fallbackEol);
-  const normalizedProps = normalizePropNames(propNames);
+  const normalizedProps = normalizePropNames(propKinds);
   const block = buildTemplateBlock(templateId, collieText, eol, normalizedProps);
 
   let nextText: string;
@@ -266,10 +274,10 @@ export async function appendToTemplateBlock(
 export async function updateTemplateBlockProps(
   targetUri: Uri,
   templateId: string,
-  propNames: string[],
+  propKinds: Map<string, { kind: 'fn' | 'value' }>,
   fallbackEol: string
 ): Promise<boolean> {
-  const normalizedProps = normalizePropNames(propNames);
+  const normalizedProps = normalizePropNames(propKinds);
   if (normalizedProps.length === 0) {
     return false;
   }
@@ -310,11 +318,11 @@ export async function updateTemplateBlockProps(
   } else {
     const propsEnd = findPropsBlockEnd(lines, propsStart, block.contentEndLine);
     const existingProps = collectPropsFromBlock(lines, propsStart, propsEnd);
-    const missing = normalizedProps.filter(name => !existingProps.has(name));
+    const missing = normalizedProps.filter(prop => !existingProps.has(prop.name));
     if (missing.length === 0) {
       return false;
     }
-    const insertion = missing.map(name => `  ${name}`);
+    const insertion = missing.map(prop => `  ${prop.name}${prop.kind === 'fn' ? '()' : ''}`);
     lines.splice(propsEnd, 0, ...insertion);
   }
 
@@ -367,9 +375,16 @@ function collectPropsFromBlock(lines: string[], propsStart: number, propsEnd: nu
     if (indent <= propsIndent) {
       break;
     }
-    const match = line.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:/);
-    if (match) {
-      props.add(match[1]);
+    // Try new syntax: name or name()
+    const newMatch = line.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\(\)?$/);
+    if (newMatch) {
+      props.add(newMatch[1]);
+      continue;
+    }
+    // Try legacy syntax: name?: type or name: type
+    const legacyMatch = line.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)(\??)?\s*:/);
+    if (legacyMatch) {
+      props.add(legacyMatch[1]);
     }
   }
   return props;

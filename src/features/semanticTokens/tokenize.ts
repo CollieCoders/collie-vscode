@@ -165,12 +165,15 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
       if (propsFieldMatch) {
         const start = propsFieldMatch[1].length;
         const fieldName = propsFieldMatch[2];
+        const suffix = propsFieldMatch[3];
+        const isFnProp = suffix === '()';
+        
         if (!overlaps(commentSegments, start, fieldName.length)) {
           pushToken(tokens, {
             line,
             startCharacter: start,
             length: fieldName.length,
-            type: 'colliePropsField'
+            type: isFnProp ? 'colliePropsFieldFn' : 'colliePropsField'
           });
         }
       }

@@ -5,7 +5,7 @@ export const singleBracePattern = /(?<!\{)\{(?!\{).*?(?<!\})\}(?!\})/g;
 export const interpolationPattern = /\{\{.*?\}\}/g;
 export const idDirectivePattern = /^(\s*)(#?id)(?:\s+|:\s*|=\s*)(.+)$/i;
 export const propsKeywordPattern = /^(\s*)(#?props)\b/;
-export const propsFieldPattern = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:/;
+export const propsFieldPattern = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\(\)|\??\s*:|)/;
 export const tagPattern = /^(\s*)([A-Za-z][A-Za-z0-9_$-]*)/;
 export const pipeTextPattern = /^(\s*)\|/;
 export const classesKeywordPattern = /^(\s*)(#?classes)\b/;

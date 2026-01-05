@@ -6,6 +6,7 @@ export const collieSemanticTokenTypes = [
   'collieDirective',
   'colliePropsKeyword',
   'colliePropsField',
+  'colliePropsFieldFn',
   'collieInterpolation',
   'colliePipeText',
   'collieComment',
