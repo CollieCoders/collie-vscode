@@ -144,7 +144,7 @@ function buildPropsBlock(propNames: string[], eol: string): string {
   if (propNames.length === 0) {
     return '';
   }
-  const lines = ['#props', ...propNames.map(name => `  ${name}: any`)];
+  const lines = ['#props', ...propNames.map(name => `  ${name}`)];
   return lines.join(eol);
 }
 
@@ -314,7 +314,7 @@ export async function updateTemplateBlockProps(
     if (missing.length === 0) {
       return false;
     }
-    const insertion = missing.map(name => `  ${name}: any`);
+    const insertion = missing.map(name => `  ${name}`);
     lines.splice(propsEnd, 0, ...insertion);
   }
 
