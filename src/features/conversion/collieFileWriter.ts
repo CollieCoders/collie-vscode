@@ -1,22 +1,14 @@
-import { TextDecoder, TextEncoder } from 'util';
 import { Uri, workspace } from 'vscode';
-
-export interface CollieWriteResult {
-  uri: Uri;
-  idLine: number;
-  wasCreated: boolean;
-}
-
-export interface CollieTemplateMatch {
-  id: string;
-  idLine: number;
-  content: string;
-}
-
-export interface CollieTemplateBlock {
-  id: string;
-  idLine: number;
-}
+import type { CollieWriteResult, CollieTemplateMatch, CollieTemplateBlock } from './types';
+import {
+  fileExists,
+  readFileAsText,
+  writeFileAsText,
+  normalizeForMatch,
+  resolveEol,
+  countNewlines,
+  getLineStartOffsets
+} from './helpers';
 
 interface TemplateBlockRange extends CollieTemplateBlock {
   contentStartLine: number;
@@ -24,21 +16,6 @@ interface TemplateBlockRange extends CollieTemplateBlock {
 }
 
 const PROP_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const textDecoder = new TextDecoder('utf-8');
-const textEncoder = new TextEncoder();
-
-async function fileExists(uri: Uri): Promise<boolean> {
-  try {
-    await workspace.fs.stat(uri);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function normalizeForMatch(value: string): string {
-  return value.replace(/\s+/g, '');
-}
 
 function parseTemplateBlocks(contents: string): CollieTemplateMatch[] {
   const lines = contents.split(/\r?\n/);
@@ -104,32 +81,6 @@ function parseTemplateBlockRanges(contents: string): TemplateBlockRange[] {
   return blocks;
 }
 
-function getLineStartOffsets(text: string): number[] {
-  const offsets: number[] = [0];
-  let index = 0;
-
-  while (index < text.length) {
-    const ch = text[index];
-    if (ch === '\r') {
-      if (text[index + 1] === '\n') {
-        index += 2;
-      } else {
-        index += 1;
-      }
-      offsets.push(index);
-      continue;
-    }
-    if (ch === '\n') {
-      index += 1;
-      offsets.push(index);
-      continue;
-    }
-    index += 1;
-  }
-
-  return offsets;
-}
-
 export async function findMatchingTemplates(
   uri: Uri,
   collieText: string
@@ -138,8 +89,7 @@ export async function findMatchingTemplates(
     return [];
   }
 
-  const bytes = await workspace.fs.readFile(uri);
-  const contents = textDecoder.decode(bytes);
+  const contents = await readFileAsText(uri);
   const trimmedSelection = collieText.trim();
   if (!trimmedSelection) {
     return [];
@@ -169,21 +119,11 @@ export async function listTemplateBlocks(uri: Uri): Promise<CollieTemplateBlock[
     return [];
   }
 
-  const bytes = await workspace.fs.readFile(uri);
-  const contents = textDecoder.decode(bytes);
+  const contents = await readFileAsText(uri);
   return parseTemplateBlocks(contents).map(block => ({
     id: block.id,
     idLine: block.idLine
   }));
-}
-
-function countNewlines(text: string): number {
-  const matches = text.match(/\r?\n/g);
-  return matches ? matches.length : 0;
-}
-
-function resolveEol(existingText: string, fallback: string): string {
-  return existingText.includes('\r\n') ? '\r\n' : fallback;
 }
 
 function normalizePropNames(names: Iterable<string>): string[] {
@@ -241,8 +181,7 @@ export async function writeTemplateBlock(
   let existingText = '';
 
   if (exists) {
-    const bytes = await workspace.fs.readFile(targetUri);
-    existingText = textDecoder.decode(bytes);
+    existingText = await readFileAsText(targetUri);
   }
 
   const eol = resolveEol(existingText, fallbackEol);
@@ -261,7 +200,7 @@ export async function writeTemplateBlock(
     nextText = `${prefix}${block}`;
   }
 
-  await workspace.fs.writeFile(targetUri, textEncoder.encode(nextText));
+  await writeFileAsText(targetUri, nextText);
 
   return {
     uri: targetUri,
@@ -284,8 +223,7 @@ export async function appendToTemplateBlock(
     return null;
   }
 
-  const bytes = await workspace.fs.readFile(targetUri);
-  const existingText = textDecoder.decode(bytes);
+  const existingText = await readFileAsText(targetUri);
   const eol = resolveEol(existingText, fallbackEol);
   const blocks = parseTemplateBlockRanges(existingText);
   const block = blocks.find(entry => entry.id === templateId);
@@ -316,7 +254,7 @@ export async function appendToTemplateBlock(
   const nextText =
     existingText.slice(0, insertionOffset) + insertion + existingText.slice(insertionOffset);
 
-  await workspace.fs.writeFile(targetUri, textEncoder.encode(nextText));
+  await writeFileAsText(targetUri, nextText);
 
   return {
     uri: targetUri,
@@ -340,8 +278,7 @@ export async function updateTemplateBlockProps(
     return false;
   }
 
-  const bytes = await workspace.fs.readFile(targetUri);
-  const existingText = textDecoder.decode(bytes);
+  const existingText = await readFileAsText(targetUri);
   const eol = resolveEol(existingText, fallbackEol);
   const blocks = parseTemplateBlockRanges(existingText);
   const block = blocks.find(entry => entry.id === templateId);
@@ -382,7 +319,7 @@ export async function updateTemplateBlockProps(
   }
 
   const nextText = lines.join(eol);
-  await workspace.fs.writeFile(targetUri, textEncoder.encode(nextText));
+  await writeFileAsText(targetUri, nextText);
   return true;
 }
 
