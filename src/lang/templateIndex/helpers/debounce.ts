@@ -1,21 +1,12 @@
-const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+// Re-export from shared debounce helper for backward compatibility
+import { DebouncedMap } from '../../../shared/helpers/debounce';
+
+const debounceMap = new DebouncedMap();
 
 export function scheduleDebounced(key: string, action: () => void, delayMs: number): void {
-  const existing = debounceTimers.get(key);
-  if (existing) {
-    clearTimeout(existing);
-  }
-  const handle = setTimeout(() => {
-    debounceTimers.delete(key);
-    action();
-  }, delayMs);
-  debounceTimers.set(key, handle);
+  debounceMap.schedule(key, action, delayMs);
 }
 
 export function cancelDebounced(key: string): void {
-  const existing = debounceTimers.get(key);
-  if (existing) {
-    clearTimeout(existing);
-    debounceTimers.delete(key);
-  }
+  debounceMap.cancel(key);
 }

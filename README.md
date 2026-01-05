@@ -527,7 +527,8 @@ Issues, ideas, and bug reports are very welcome.
 
 * **Bugs / feature requests:**
   Open an issue in this repository with a minimal `.collie` example and a short description of what you expected vs what happened.
-
+* **Contributing code:**
+  See [CONTRIBUTING.md](CONTRIBUTING.md) for code organization guidelines, file structure patterns, and development setup.
 * **Language questions:**
   TODO: Add link to the main Collie language docs / discussion forum / Discord here.
 
