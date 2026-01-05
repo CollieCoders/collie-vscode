@@ -1,7 +1,6 @@
 import { Hover, MarkdownString, languages, TextDocument } from 'vscode';
 import type { Position } from 'vscode';
 import type { FeatureContext } from '..';
-import { registerFeature } from '..';
 import type {
   ClassAliasDecl,
   ConditionalNode,
@@ -208,7 +207,7 @@ function provideHover(document: TextDocument, position: Position, context: Featu
   return undefined;
 }
 
-function activateHoverFeature(context: FeatureContext) {
+export function registerHoverProvider(context: FeatureContext) {
   const provider = languages.registerHoverProvider({ language: 'collie' }, {
     provideHover(document, position) {
       return provideHover(document, position, context);
@@ -218,8 +217,6 @@ function activateHoverFeature(context: FeatureContext) {
   context.register(provider);
   context.logger.info('Collie hover provider registered.');
 }
-
-registerFeature(activateHoverFeature);
 
 function getClassAliasHover(offset: number, root: RootNode): Hover | undefined {
   const decl = root.classAliases;

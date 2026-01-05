@@ -45,6 +45,14 @@ export function print(root: RootNode, options: PrintOptions = {}): string {
 
   const lines: string[] = [];
 
+  const idValue = root.rawId ?? root.id;
+  if (idValue) {
+    lines.push(`#id ${idValue}`);
+    if (root.props || root.classAliases || root.children.length) {
+      lines.push('');
+    }
+  }
+
   if (root.props) {
     lines.push(...printProps(root.props, ctx));
     if (root.classAliases || root.children.length) {
@@ -113,16 +121,24 @@ function printNode(node: Node, level: number, ctx: PrinterContext, out: string[]
 
 function printElement(node: ElementNode, level: number, ctx: PrinterContext, out: string[]) {
   const indent = createIndent(ctx, level);
-  let line = indent + formatElementSelector(node, ctx);
+  let line = indent + formatElementHeader(node, ctx);
   const inlineText = getInlineTextChild(node);
+  const attributeLines = node.attributeLines ?? [];
 
   if (inlineText) {
     line += ' ' + formatInlinePipe(inlineText, ctx.options);
-    out.push(line);
-    return;
   }
 
   out.push(line);
+  if (attributeLines.length) {
+    const attributeIndent = createIndent(ctx, level + 1);
+    for (const attributeLine of attributeLines) {
+      out.push(attributeIndent + attributeLine);
+    }
+  }
+  if (inlineText) {
+    return;
+  }
   for (const child of node.children) {
     printNode(child, level + 1, ctx, out);
   }
@@ -138,6 +154,14 @@ function formatElementSelector(node: ElementNode, ctx: PrinterContext): string {
   }
 
   return node.name + node.classes.map(cls => ` .${cls}`).join('');
+}
+
+function formatElementHeader(node: ElementNode, ctx: PrinterContext): string {
+  const selector = formatElementSelector(node, ctx);
+  if (!node.attributes || node.attributes.length === 0) {
+    return selector;
+  }
+  return `${selector} ${node.attributes.join(' ')}`;
 }
 
 function getInlineTextChild(node: ElementNode): TextNode | null {
@@ -222,7 +246,10 @@ function formatInlineBranchBody(nodes: Node[], ctx: PrinterContext): string | nu
 }
 
 function formatInlineElement(node: ElementNode, ctx: PrinterContext): string | null {
-  const selector = formatElementSelector(node, ctx);
+  if (node.attributeLines && node.attributeLines.length > 0) {
+    return null;
+  }
+  const selector = formatElementHeader(node, ctx);
   if (node.children.length === 0) {
     return selector;
   }

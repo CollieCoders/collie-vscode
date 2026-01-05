@@ -30,6 +30,8 @@ export interface ElementNode {
   name: string;
   classes: string[];
   children: Node[];
+  attributes?: string[];
+  attributeLines?: string[];
   span?: SourceSpan;
   nameSpan?: SourceSpan;
   classSpans?: SourceSpan[];

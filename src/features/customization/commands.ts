@@ -1,6 +1,5 @@
 import { commands, ConfigurationTarget, env, window, workspace } from 'vscode';
 import type { FeatureContext } from '..';
-import { registerFeature } from '..';
 import type { CollieSemanticTokenType } from '../semanticTokens/legend';
 import { collieSemanticTokenTypes } from '../semanticTokens/legend';
 import type { TokenCustomizationRule } from './settingsWriter';
@@ -120,7 +119,7 @@ async function copyCustomizationSnippet() {
   window.showInformationMessage('Copied Collie semantic token customization snippet to clipboard.');
 }
 
-async function registerCustomizationCommands(context: FeatureContext) {
+export async function registerCustomizationCommands(context: FeatureContext) {
   for (const { command, tokenType } of CUSTOMIZATION_COMMANDS) {
     context.register(
       commands.registerCommand(command, () => {
@@ -132,5 +131,3 @@ async function registerCustomizationCommands(context: FeatureContext) {
   context.register(commands.registerCommand('collie.resetTokenCustomization', runResetFlow));
   context.register(commands.registerCommand('collie.copyTokenCustomizationSnippet', copyCustomizationSnippet));
 }
-
-registerFeature(registerCustomizationCommands);

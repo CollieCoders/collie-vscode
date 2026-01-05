@@ -6,10 +6,10 @@ tsconfig.json
 tsconfig.build.json
 esbuild.config.mjs
 pnpm-lock.yaml
-mvp-implementation-plan.md
 .editorconfig
 .gitignore
 .DS_Store
 .git/**
 __MACOSX/**
 *.vsix
+dist/*.map

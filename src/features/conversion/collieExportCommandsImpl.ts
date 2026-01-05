@@ -2,6 +2,7 @@ import { env, window, workspace, type OutputChannel, type TextDocument } from 'v
 import type { FeatureContext } from '..';
 import type { CollieExportResult, CollieExportTarget } from '../../convert/export/collieExport';
 import { exportCollieDocument } from '../../convert/export/collieExport';
+import { warnIfMissingConfig, warnIfMissingTooling } from '../config/warnings';
 
 const COLLIE_LANGUAGE_ID = 'collie';
 const OUTPUT_CHANNEL_NAME = 'Collie Export';
@@ -26,6 +27,9 @@ async function runCopyCommand(context: FeatureContext, target: CollieExportTarge
   if (!document) {
     return;
   }
+
+  await warnIfMissingConfig(document, context);
+  await warnIfMissingTooling(document, context);
 
   const documentText = document.getText();
   context.logger.info(`[${target}] Collie export command invoked for ${document.uri.toString(true)}.`);

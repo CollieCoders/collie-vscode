@@ -11,6 +11,6 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src", "language-configuration.json"],
+  "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules"]
 }

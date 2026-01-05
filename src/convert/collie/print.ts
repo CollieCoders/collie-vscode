@@ -58,7 +58,8 @@ function printNode(node: IrNode, level: number, ctx: PrinterContext, out: string
       }
       break;
     case 'conditional':
-      throw new Error('Conditional IR nodes are not supported in the Collie printer.');
+      printConditional(node, level, ctx, out);
+      break;
     default: {
       const exhaustive: never = node;
       throw new Error(`Unsupported IR node: ${(exhaustive as IrNode).kind}`);
@@ -110,7 +111,7 @@ function formatProps(props: readonly (IrProp | IrExpression)[], ctx: PrinterCont
     parts.push(formatExpressionPayload(prop.expressionText));
   }
 
-  return ' ' + parts.join(' ');
+  return `(${parts.join(' ')})`;
 }
 
 function getInlineChild(children: readonly IrNode[], ctx: PrinterContext): string | undefined {
@@ -151,4 +152,35 @@ function createIndent(level: number, ctx: PrinterContext) {
   }
 
   return ctx.indentUnit.repeat(level);
+}
+
+function formatInlineText(node: IrText, ctx: PrinterContext): string {
+  if (!node.value) {
+    return ctx.options.spaceAroundPipe ? '| ' : '|';
+  }
+  return ctx.options.spaceAroundPipe ? `| ${node.value}` : `|${node.value}`;
+}
+
+function printConditional(node: IrConditional, level: number, ctx: PrinterContext, out: string[]) {
+  if (node.branches.length === 0) {
+    return;
+  }
+
+  for (let i = 0; i < node.branches.length; i += 1) {
+    const branch = node.branches[i];
+    const indent = createIndent(level, ctx);
+    const directive = resolveConditionalDirective(i, branch.test);
+    const line = branch.test ? `${indent}${directive} ${branch.test}` : `${indent}${directive}`;
+    out.push(line);
+    for (const child of branch.children) {
+      printNode(child, level + 1, ctx, out);
+    }
+  }
+}
+
+function resolveConditionalDirective(index: number, test: string | undefined): string {
+  if (index === 0) {
+    return '@if';
+  }
+  return test ? '@elseIf' : '@else';
 }

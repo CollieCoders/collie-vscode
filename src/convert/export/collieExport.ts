@@ -45,7 +45,7 @@ export function exportCollieDocument(document: TextDocument, target: CollieExpor
   let jsxOutput = irNodes.length > 0 ? printJsxNodes(irNodes, { target }) : buildEmptyJsxPlaceholder(target);
 
   if (target === 'TSX' && irNodes.length > 0) {
-    jsxOutput = wrapWithTsxComponent(jsxOutput, document);
+    jsxOutput = wrapWithTsxExport(jsxOutput, document, root.id);
   }
 
   return {
@@ -82,25 +82,30 @@ function buildEmptyJsxPlaceholder(target: CollieExportTarget): string {
   return `/* Collie export (${target}) found no renderable nodes. */`;
 }
 
-function wrapWithTsxComponent(snippet: string, document: TextDocument): string {
-  const componentName = deriveComponentName(document);
+function wrapWithTsxExport(snippet: string, document: TextDocument, templateId?: string): string {
+  const exportName = deriveExportFunctionName(document, templateId);
   const trimmedSnippet = snippet.trimEnd();
   const indentedSnippet = indentMultiline(trimmedSnippet, '    ');
-  return `export function ${componentName}(): JSX.Element {\n  return (\n${indentedSnippet}\n  );\n}\n`;
+  return `export function ${exportName}(): JSX.Element {\n  return (\n${indentedSnippet}\n  );\n}\n`;
 }
 
-function deriveComponentName(document: TextDocument): string {
+function deriveExportFunctionName(document: TextDocument, templateId?: string): string {
+  if (templateId) {
+    const sanitized = sanitizeExportName(templateId);
+    return `${sanitized}Export`;
+  }
+
   if (document.uri.scheme !== 'file') {
     return 'CollieExportComponent';
   }
 
   const fsPath = document.uri.fsPath;
   const baseName = basename(fsPath, extname(fsPath));
-  const sanitized = sanitizeComponentName(baseName);
+  const sanitized = sanitizeExportName(baseName);
   return `${sanitized}Export`;
 }
 
-function sanitizeComponentName(baseName: string | undefined): string {
+function sanitizeExportName(baseName: string | undefined): string {
   if (!baseName) {
     return 'Collie';
   }

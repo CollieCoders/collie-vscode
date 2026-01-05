@@ -2,7 +2,7 @@
   "name": "collie-vscode",
   "displayName": "Collie",
   "description": "VS Code language support for Collie templates",
-  "version": "0.2.2",
+  "version": "1.1.3",
   "publisher": "collie",
   "license": "MIT",
   "repository": "https://github.com/collie-lang/collie-vscode",
@@ -14,11 +14,20 @@
     "Programming Languages"
   ],
   "main": "./dist/extension.cjs",
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "vscode:prepublish": "npm run build",
+    "package": "vsce package",
+    "lint": "tsc --noEmit"
+  },
   "activationEvents": [
-    "onLanguage:collie",
+    "onCommand:collie.convertToCollie",
     "onCommand:collie.convertTsxSelectionToCollie",
     "onCommand:collie.copyAsJsx",
-    "onCommand:collie.copyAsTsx"
+    "onCommand:collie.copyAsTsx",
+    "onCommand:collie.convertToTsxClipboard",
+    "onLanguage:collie"
   ],
   "contributes": {
     "languages": [
@@ -64,22 +73,22 @@
         "collie.features.diagnostics": {
           "type": "boolean",
           "default": true,
-          "description": "Enable experimental Collie diagnostics (Problems panel integration)."
+          "description": "Enable Collie diagnostics (Problems panel integration)."
         },
         "collie.features.completions": {
           "type": "boolean",
           "default": true,
-          "description": "Enable experimental Collie completions (directives, tags, components)."
+          "description": "Enable Collie completions (directives, tags, components)."
         },
         "collie.features.navigation": {
           "type": "boolean",
           "default": true,
-          "description": "Enable experimental Collie navigation features (Go to Definition, symbols)."
+          "description": "Enable Collie navigation features (Go to Definition, symbols)."
         },
         "collie.features.hover": {
           "type": "boolean",
           "default": true,
-          "description": "Enable experimental Collie hover info (directives, props, expressions)."
+          "description": "Enable Collie hover info (directives, props, expressions)."
         },
         "collie.format.indentSize": {
           "type": "number",
@@ -101,6 +110,37 @@
           "type": "boolean",
           "default": true,
           "description": "Normalize props declarations to use a single space after the colon."
+        },
+        "collie.css.diagnostics.unknownClassOverride": {
+          "type": "string",
+          "enum": [
+            "inherit",
+            "on",
+            "off"
+          ],
+          "default": "inherit",
+          "description": "Override unknown class diagnostics from Collie config (inherit/on/off)."
+        },
+        "collie.props.reactIntegration.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable experimental React integration diagnostics for Collie props."
+        },
+        "collie.warnings.missingConfig.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a one-time warning when no `collie.config.*` is found in the workspace."
+        },
+        "collie.warnings.missingPackages.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a one-time warning when required `@collie-lang/*` packages appear to be missing."
+        },
+        "collie.warnings.throttleMinutes": {
+          "type": "number",
+          "default": 1440,
+          "minimum": 1,
+          "description": "Minimum minutes between repeated warning notifications per workspace (default: 1 day)."
         }
       }
     },
@@ -143,6 +183,7 @@
       {
         "command": "collie.convertTsxSelectionToCollie",
         "title": "Collie: Convert JSX/TSX Selection to Collie",
+        "description": "Convert the selected JSX/TSX into a #id template block and insert <Collie id=\"...\"> (ensures import from @collie-lang/react).",
         "category": "Collie"
       },
       {
@@ -158,54 +199,123 @@
         "category": "Collie"
       },
       {
+        "command": "collie.convertToCollie",
+        "title": "Convert to Collie",
+        "description": "Convert the selected JSX/TSX into a #id template block and insert <Collie id=\"...\"> (ensures import from @collie-lang/react).",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.convertToTsxClipboard",
+        "title": "Convert to TSX (Copy to Clipboard)",
+        "description": "Convert the active Collie document into TSX and copy it to the clipboard.",
+        "category": "Collie"
+      },
+      {
         "command": "collie.openCompiledHtmlPartial",
         "title": "Collie: Open Compiled HTML Partial",
         "description": "Open the compiled HTML partial (collie/dist/<id>.html) for the active Collie template.",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.rebuildCssIndex",
+        "title": "Collie: Rebuild CSS Index",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.showCurrentConfig",
+        "title": "Collie: Show Current Config (for this file)",
+        "category": "Collie"
+      },
+      {
+        "command": "collie.toggleUnknownClassDiagnostics",
+        "title": "Collie: Toggle CSS Unknown Class Diagnostics",
         "category": "Collie"
       }
     ],
     "menus": {
       "editor/context": [
         {
+          "command": "collie.convertToCollie",
+          "when": "editorHasSelection && (editorLangId == 'typescriptreact' || editorLangId == 'javascriptreact')",
+          "group": "navigation@10"
+        },
+        {
+          "command": "collie.convertToTsxClipboard",
+          "when": "editorLangId == 'collie'",
+          "group": "navigation@11"
+        },
+        {
           "command": "collie.customizeTokenColor",
-          "when": "editorLangId == collie",
+          "when": "editorLangId == 'collie'",
           "group": "navigation@99"
         },
         {
           "command": "collie.resetTokenCustomization",
-          "when": "editorLangId == collie",
+          "when": "editorLangId == 'collie'",
           "group": "navigation@100"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "collie.convertToCollie",
+          "when": "false"
+        },
+        {
+          "command": "collie.convertToTsxClipboard",
+          "when": "false"
         }
       ]
     },
     "configurationDefaults": {
-      "[collie]": {
-        "editor.semanticHighlighting.enabled": true,
-        "editor.semanticTokenColorCustomizations": {
-          "rules": {
-            "collieTag": "#569CD6",
-            "collieClassShorthand": "#4EC9B0",
-            "collieDirective": "#C586C0",
-            "colliePropsKeyword": "#D7BA7D",
-            "colliePropsField": "#9CDCFE",
-            "collieInterpolation": "#CE9178",
-            "colliePipeText": "#D4D4D4",
-            "collieComment": "#6A9955",
-            "collieClassesKeyword": "#D7BA7D",
-            "collieClassAliasName": "#4FC1FF",
-            "collieClassAliasUsage": "#4EC9B0",
-            "collieIdKeyword": "#C586C0",
-            "collieIdValue": "#DCDCAA"
+      "editor.semanticHighlighting.enabled": true,
+      "editor.semanticTokenColorCustomizations": {
+        "enabled": true,
+        "rules": {
+          "collieTag": {
+            "foreground": "#61AFEF"
+          },
+          "collieClassShorthand": {
+            "foreground": "#56B6C2"
+          },
+          "collieDirective": {
+            "foreground": "#C678DD"
+          },
+          "colliePropsKeyword": {
+            "foreground": "#C678DD"
+          },
+          "colliePropsField": {
+            "foreground": "#d59750"
+          },
+          "collieInterpolation": {
+            "foreground": "#e5d77b",
+            "fontStyle": "bold"
+          },
+          "colliePipeText": {
+            "foreground": "#D4D4D4"
+          },
+          "collieComment": {
+            "foreground": "#5C6370",
+            "fontStyle": "italic"
+          },
+          "collieClassesKeyword": {
+            "foreground": "#C678DD"
+          },
+          "collieClassAliasName": {
+            "foreground": "#E06C75"
+          },
+          "collieClassAliasUsage": {
+            "foreground": "#56B6C2"
+          },
+          "collieIdKeyword": {
+            "foreground": "#C678DD"
+          },
+          "collieIdValue": {
+            "foreground": "#E06C75",
+            "fontStyle": "bold"
           }
         }
       }
     }
-  },
-  "scripts": {
-    "build": "node esbuild.config.mjs",
-    "watch": "node esbuild.config.mjs --watch",
-    "package": "vsce package",
-    "lint": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

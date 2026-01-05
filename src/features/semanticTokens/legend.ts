@@ -17,7 +17,8 @@ export const collieSemanticTokenTypes = [
   'collieComponent',
   'collieSingleBraceInterpolation',
   'collieIdKeyword',
-  'collieIdValue'
+  'collieIdValue',
+  'collieEventHandler'
 ] as const;
 
 export type CollieSemanticTokenType = (typeof collieSemanticTokenTypes)[number];
@@ -25,6 +26,6 @@ export type CollieSemanticTokenType = (typeof collieSemanticTokenTypes)[number];
 export const collieSemanticTokenModifiers: string[] = [];
 
 export const collieSemanticTokensLegend = new SemanticTokensLegend(
-  collieSemanticTokenTypes as readonly string[],
+  collieSemanticTokenTypes as unknown as string[],
   collieSemanticTokenModifiers
 );

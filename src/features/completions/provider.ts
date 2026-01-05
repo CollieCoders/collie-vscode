@@ -11,7 +11,6 @@ import {
 } from 'vscode';
 import { dirname, extname, basename } from 'path';
 import type { FeatureContext } from '..';
-import { registerFeature } from '..';
 import type { ClassAliasesDecl, Node } from '../../format/parser/ast';
 import type { ParsedDocument } from '../../lang';
 import { getParsedDocument } from '../../lang/cache';
@@ -194,7 +193,7 @@ async function provideCompletionItems(document: TextDocument, position: Position
   return items;
 }
 
-function activateCompletionFeature(context: FeatureContext) {
+export function registerCompletionsProvider(context: FeatureContext) {
   const provider = languages.registerCompletionItemProvider(
     { language: 'collie' },
     {
@@ -230,8 +229,6 @@ function activateCompletionFeature(context: FeatureContext) {
   );
   context.logger.info('Collie completion provider registered.');
 }
-
-registerFeature(activateCompletionFeature);
 
 function createAliasCompletionItems(
   word: string,
