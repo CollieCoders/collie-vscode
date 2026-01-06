@@ -236,6 +236,7 @@ async function findComponentPropUsages(
   for (const uri of files) {
     let size = 0;
     try {
+      // eslint-disable-next-line no-await-in-loop
       const stat = await workspace.fs.stat(uri);
       size = stat.size;
     } catch {
@@ -254,6 +255,7 @@ async function findComponentPropUsages(
       break;
     }
 
+    // eslint-disable-next-line no-await-in-loop
     const text = await readFileText(uri);
     if (text === null) {
       continue;
@@ -361,10 +363,10 @@ async function updateDiagnostics(
   collection.set(document.uri, diagnostics);
 }
 
-async function updateTemplateUsageDiagnostics(
+function updateTemplateUsageDiagnostics(
   document: TextDocument,
   collection: ReturnType<typeof languages.createDiagnosticCollection>
-): Promise<void> {
+): void {
   if (!isTsxDocument(document) || !isFeatureFlagEnabled('diagnostics')) {
     collection.delete(document.uri);
     return;

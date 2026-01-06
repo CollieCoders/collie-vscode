@@ -1,5 +1,4 @@
 import type { Uri} from 'vscode';
-import { workspace } from 'vscode';
 import type { CollieWriteResult, CollieTemplateMatch, CollieTemplateBlock } from './types';
 import {
   fileExists,
