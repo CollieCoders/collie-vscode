@@ -23,6 +23,8 @@ const TEMPLATE_ID_PATTERN = /^[A-Za-z][A-Za-z0-9._-]*$/;
 const COLLIE_GLOB = '**/*.collie';
 const COLLIE_EXCLUDE_GLOB = '**/node_modules/**';
 const DEFAULT_PROP_TYPE = 'unknown';
+const FILE_IGNORE_PATTERN = /^\s*#collie-ignore-file\s+(.+?)\s*$/;
+const LINE_IGNORE_PATTERN = /^\s*#collie-ignore-next-line\s+(.+?)\s*$/;
 
 let templateIndexVersion = 0;
 let cachedTemplateEntriesVersion = -1;
@@ -273,6 +275,109 @@ function buildAddPropDeclarationAction(
   return action;
 }
 
+function hasFileIgnoreDirective(document: TextDocument, code: string): boolean {
+  for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+    const line = document.lineAt(lineNumber).text;
+    const match = FILE_IGNORE_PATTERN.exec(line);
+    if (match) {
+      const codes = match[1].trim().split(/\s+/);
+      if (codes.includes(code)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function hasLineIgnoreDirective(document: TextDocument, lineNumber: number, code: string): boolean {
+  if (lineNumber === 0) {
+    return false;
+  }
+  const previousLine = document.lineAt(lineNumber - 1).text;
+  const match = LINE_IGNORE_PATTERN.exec(previousLine);
+  if (match) {
+    const codes = match[1].trim().split(/\s+/);
+    return codes.includes(code);
+  }
+  return false;
+}
+
+function buildIgnoreOnLineAction(
+  document: TextDocument,
+  diagnostic: Diagnostic,
+  code: string
+): CodeAction | null {
+  const diagnosticLine = diagnostic.range.start.line;
+  
+  // Check if directive already exists
+  if (hasLineIgnoreDirective(document, diagnosticLine, code)) {
+    return null;
+  }
+
+  const targetLine = document.lineAt(diagnosticLine);
+  const indent = ' '.repeat(targetLine.firstNonWhitespaceCharacterIndex);
+  const eol = getEol(document);
+  const directiveText = `${indent}#collie-ignore-next-line ${code}${eol}`;
+
+  const edit = new WorkspaceEdit();
+  edit.insert(document.uri, targetLine.range.start, directiveText);
+
+  const action = new CodeAction(
+    `Ignore this ${code} on this line`,
+    CodeActionKind.QuickFix
+  );
+  action.edit = edit;
+  action.diagnostics = [diagnostic];
+  return action;
+}
+
+function buildIgnoreInFileAction(
+  document: TextDocument,
+  diagnostic: Diagnostic,
+  code: string
+): CodeAction | null {
+  // Check if directive already exists
+  if (hasFileIgnoreDirective(document, code)) {
+    return null;
+  }
+
+  const eol = getEol(document);
+  let insertLine = 0;
+  
+  // Find insertion point (after #id if present, otherwise at top)
+  for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+    const line = document.lineAt(lineNumber).text;
+    const trimmed = line.trim();
+    
+    if (trimmed.length === 0) {
+      continue;
+    }
+    
+    if (ID_DIRECTIVE_PATTERN.test(trimmed)) {
+      insertLine = lineNumber + 1;
+      break;
+    }
+    
+    // If we hit a non-id directive, insert before it
+    insertLine = lineNumber;
+    break;
+  }
+
+  const directiveText = `#collie-ignore-file ${code}${eol}`;
+  const { position, prefix } = getInsertPosition(document, insertLine);
+  
+  const edit = new WorkspaceEdit();
+  edit.insert(document.uri, position, `${prefix}${directiveText}`);
+
+  const action = new CodeAction(
+    `Ignore this ${code} in this file`,
+    CodeActionKind.QuickFix
+  );
+  action.edit = edit;
+  action.diagnostics = [diagnostic];
+  return action;
+}
+
 function buildFixAllAction(document: TextDocument, diagnostics: Diagnostic[]): CodeAction | null {
   const edits = collectFixEdits(document, diagnostics);
   if (edits.length === 0) {
@@ -408,6 +513,19 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
     // Compiler-provided fixes and props actions
     const actionableDiagnostics = diagnostics.filter(diag => diag.range.intersection(range));
     for (const diagnostic of actionableDiagnostics) {
+      // Add ignore quick fixes for diagnostics with string codes
+      if (typeof diagnostic.code === 'string') {
+        const ignoreLineAction = buildIgnoreOnLineAction(document, diagnostic, diagnostic.code);
+        if (ignoreLineAction) {
+          actions.push(ignoreLineAction);
+        }
+        
+        const ignoreFileAction = buildIgnoreInFileAction(document, diagnostic, diagnostic.code);
+        if (ignoreFileAction) {
+          actions.push(ignoreFileAction);
+        }
+      }
+
       const data = diagnostic as DiagnosticData | undefined;
       if (!data) {
         continue;
@@ -425,7 +543,7 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
       }
 
         if (data.kind === 'removePropDeclaration') {
-          actions.push(buildRemovePropAction(document, diagnostic, data.fix));
+          actions.push(buildRemovePropDeclaration(document, diagnostic, data.fix));
         }
       }
 

@@ -17,7 +17,7 @@ import { onDidChangeCollieConfig, resolveCollieConfigForDocument } from '../../c
 import { getCssClassIndexForDocument, getUnknownClassOverrideSetting } from '../css/indexer';
 import type { Node } from '../../format/parser/ast';
 import { spanToRange } from './helpers/ranges';
-import { SUPPORTED_DIRECTIVES, DIALECT_DIRECTIVE_ALIASES } from './helpers/directives';
+import { SUPPORTED_DIRECTIVES, DIALECT_DIRECTIVE_ALIASES, parseIgnoreDirectives } from './helpers/directives';
 import { invalidateTemplateEntryCache, getTemplateEntriesById } from './helpers/cache';
 import {
   invalidateTemplateUsageCache,
@@ -356,6 +356,35 @@ function createDiagnostic(range: Range, message: string, code: string): VSDiagno
   return diagnostic;
 }
 
+function applyDiagnosticSuppression(document: TextDocument, diagnostics: VSDiagnostic[]): VSDiagnostic[] {
+  const ignoreDirectives = parseIgnoreDirectives(document.getText());
+  const filtered: VSDiagnostic[] = [];
+
+  for (const diagnostic of diagnostics) {
+    const code = diagnostic.code;
+    if (typeof code !== 'string') {
+      filtered.push(diagnostic);
+      continue;
+    }
+
+    // Check file-level suppression
+    if (ignoreDirectives.fileLevelCodes.has(code)) {
+      continue;
+    }
+
+    // Check line-level suppression
+    const diagnosticLine = diagnostic.range.start.line;
+    const lineCodes = ignoreDirectives.lineLevelCodes.get(diagnosticLine);
+    if (lineCodes?.has(code)) {
+      continue;
+    }
+
+    filtered.push(diagnostic);
+  }
+
+  return filtered;
+}
+
 async function applyDiagnostics(
   document: TextDocument,
   collection: ReturnType<typeof languages.createDiagnosticCollection>,
@@ -396,9 +425,12 @@ async function applyDiagnostics(
   diagnostics.push(...collectCompilerDiagnostics(document, parsed, config));
   diagnostics.push(...collectUnknownClassDiagnostics(document, parsed, config));
 
+  // Apply diagnostic suppression based on ignore directives
+  const suppressedDiagnostics = applyDiagnosticSuppression(document, diagnostics);
+
   // diagnostic-upgrade: Only publish if this is still the latest run
   if (validationRunVersions.get(docKey) === currentVersion) {
-    collection.set(document.uri, diagnostics);
+    collection.set(document.uri, suppressedDiagnostics);
   }
 }
 
