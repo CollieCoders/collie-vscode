@@ -9,6 +9,7 @@ import {
 } from 'vscode';
 import * as path from 'path';
 import type { Logger } from '../../logger';
+import { getTextPreferOpenDoc } from '../diagnostics/helpers/textHelpers';
 
 export interface CssClassDefinition {
   uri: Uri;
@@ -199,8 +200,9 @@ export class CssClassIndex {
 
     let text = '';
     try {
-      const contents = await workspace.fs.readFile(uri);
-      text = Buffer.from(contents).toString('utf8');
+      // diagnostic-upgrade: Prefer open document buffers over disk reads
+      // This allows CSS class diagnostics to update based on unsaved edits
+      text = await getTextPreferOpenDoc(uri);
     } catch (error) {
       this.logger.warn(`Failed to read CSS file: ${uri.fsPath}`, error);
       return { indexed: false, limitReached: false };

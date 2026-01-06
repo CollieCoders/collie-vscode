@@ -29,9 +29,26 @@ const DIAGNOSTIC_DEBOUNCE_MS = 200;
 const REFRESH_DEBOUNCE_MS = 250;
 const REFRESH_OPEN_DOCS_KEY = '__collie_refresh_open_docs__';
 const pendingDiagnostics = new Map<string, ReturnType<typeof setTimeout>>();
+// diagnostic-upgrade: Track validation run versions to prevent stale results
+const validationRunVersions = new Map<string, number>();
 
 function shouldHandleDocument(document: TextDocument): boolean {
   return document.languageId === 'collie';
+}
+
+// diagnostic-upgrade: Check if file changes should trigger Collie doc revalidation
+function isRelevantForCrossFileRevalidation(document: TextDocument): boolean {
+  const lang = document.languageId;
+  // TSX/TS/JS files affect props/template diagnostics
+  if (lang === 'typescriptreact' || lang === 'typescript' || 
+      lang === 'javascriptreact' || lang === 'javascript') {
+    return true;
+  }
+  // CSS files affect class diagnostics
+  if (lang === 'css' || lang === 'scss' || lang === 'less') {
+    return true;
+  }
+  return false;
 }
 
 function convertParserDiagnostic(document: TextDocument, diagnostic: ParserDiagnostic): VSDiagnostic {
@@ -353,6 +370,11 @@ async function applyDiagnostics(
     return;
   }
 
+  // diagnostic-upgrade: Capture current run version to detect stale results
+  const docKey = document.uri.toString();
+  const currentVersion = (validationRunVersions.get(docKey) ?? 0) + 1;
+  validationRunVersions.set(docKey, currentVersion);
+
   let parsed: ParsedDocument | null = null;
   try {
     parsed = getParsedDocument(document);
@@ -374,7 +396,10 @@ async function applyDiagnostics(
   diagnostics.push(...collectCompilerDiagnostics(document, parsed, config));
   diagnostics.push(...collectUnknownClassDiagnostics(document, parsed, config));
 
-  collection.set(document.uri, diagnostics);
+  // diagnostic-upgrade: Only publish if this is still the latest run
+  if (validationRunVersions.get(docKey) === currentVersion) {
+    collection.set(document.uri, diagnostics);
+  }
 }
 
 function scheduleDiagnostics(
@@ -469,9 +494,15 @@ export function registerDiagnosticsProvider(context: FeatureContext) {
 
   context.register(
     workspace.onDidChangeTextDocument(event => {
-      scheduleDiagnostics(event.document, collection, context);
-      if (isTemplateUsageDocument(event.document)) {
-        invalidateTemplateUsageCache();
+      // diagnostic-upgrade: Revalidate Collie docs when relevant files change (not just on save)
+      if (shouldHandleDocument(event.document)) {
+        scheduleDiagnostics(event.document, collection, context);
+        if (isTemplateUsageDocument(event.document)) {
+          invalidateTemplateUsageCache();
+          scheduleOpenDocumentsRefresh(collection, context);
+        }
+      } else if (isRelevantForCrossFileRevalidation(event.document)) {
+        // When TSX/TS/CSS files change, revalidate all open Collie documents
         scheduleOpenDocumentsRefresh(collection, context);
       }
     })
@@ -479,9 +510,14 @@ export function registerDiagnosticsProvider(context: FeatureContext) {
 
   context.register(
     workspace.onDidSaveTextDocument(document => {
-      scheduleDiagnostics(document, collection, context);
-      if (isTemplateUsageDocument(document)) {
-        invalidateTemplateUsageCache();
+      // diagnostic-upgrade: Save events also trigger revalidation (in addition to change events)
+      if (shouldHandleDocument(document)) {
+        scheduleDiagnostics(document, collection, context);
+        if (isTemplateUsageDocument(document)) {
+          invalidateTemplateUsageCache();
+          scheduleOpenDocumentsRefresh(collection, context);
+        }
+      } else if (isRelevantForCrossFileRevalidation(document)) {
         scheduleOpenDocumentsRefresh(collection, context);
       }
     })

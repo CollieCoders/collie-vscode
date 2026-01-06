@@ -18,6 +18,7 @@ import { isFeatureFlagEnabled, onDidChangeFeatureFlags } from '../featureFlags';
 import * as path from 'path';
 import * as ts from 'typescript';
 import type { SourceSpan } from '../../format/parser/diagnostics';
+import { getTextPreferOpenDoc } from './helpers/textHelpers';
 
 const COLLECTION_NAME = 'collie-react-props';
 const TEMPLATE_USAGE_COLLECTION = 'collie-template-usage';
@@ -109,8 +110,8 @@ async function readFileText(uri: Uri): Promise<string | null> {
     if (stat.size > MAX_FILE_BYTES) {
       return null;
     }
-    const contents = await workspace.fs.readFile(uri);
-    return Buffer.from(contents).toString('utf8');
+    // diagnostic-upgrade: Prefer open document buffers over disk reads
+    return await getTextPreferOpenDoc(uri);
   } catch {
     return null;
   }
@@ -492,6 +493,10 @@ export function registerTsPropsDiagnostics(context: FeatureContext) {
       }
 
       if (isTsxDocument(event.document)) {
+        // diagnostic-upgrade: Invalidate workspace version on TSX changes (not just saves)
+        // This ensures Collie diagnostics can see unsaved TSX edits
+        workspaceUsageVersion += 1;
+        refreshOpenDocuments(collection, context);
         scheduleTemplateUsageDiagnostics(event.document, usageCollection);
       }
     })

@@ -291,6 +291,20 @@ export function registerCssIndexer(context: FeatureContext) {
     })
   );
 
+  // diagnostic-upgrade: Reindex CSS files on text changes (not just saves)
+  // This allows CSS class diagnostics to update based on unsaved edits
+  context.register(
+    workspace.onDidChangeTextDocument(event => {
+      if (isCssDocument(event.document)) {
+        const folder = workspace.getWorkspaceFolder(event.document.uri);
+        if (folder) {
+          const indexEntry = workspaceIndexes.get(folder.uri.fsPath);
+          indexEntry?.scheduleIndex(event.document.uri);
+        }
+      }
+    })
+  );
+
   context.register(
     window.onDidChangeActiveTextEditor(editor => {
       if (!editor) {
