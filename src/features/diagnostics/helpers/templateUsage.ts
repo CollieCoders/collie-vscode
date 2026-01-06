@@ -1,6 +1,7 @@
 import { workspace } from 'vscode';
 import { TextDecoder } from 'util';
 import type { TextDocument } from 'vscode';
+import { getTextPreferOpenDoc } from './textHelpers';
 
 const TEMPLATE_USAGE_GLOB = '**/*.{ts,tsx,js,jsx,html}';
 const TEMPLATE_USAGE_EXCLUDE_GLOB = '**/{node_modules,dist,build,out,coverage,.git}/**';
@@ -53,8 +54,9 @@ export async function getReferencedTemplateIds(): Promise<Set<string>> {
     for (const uri of files) {
       let contents = '';
       try {
-        const data = await workspace.fs.readFile(uri);
-        contents = textDecoder.decode(data);
+        // diagnostic-upgrade: Prefer open document buffers over disk reads
+        // This allows unreferenced template warnings to clear when adding <Collie id="..."/> in unsaved TSX
+        contents = await getTextPreferOpenDoc(uri);
       } catch {
         continue;
       }
