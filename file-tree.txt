@@ -1,0 +1,168 @@
+/Users/joshlevy/Desktop/collie-vscode
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── LICENSE
+├── README.md
+├── assets
+|  ├── collie-extension-icon.png
+|  ├── collie-extension-icon.svg
+|  └── icons
+|     ├── collie-file-icon.svg
+|     ├── collie-folder-closed.svg
+|     └── collie-folder-open.svg
+├── diagnostic-suppression-prompt.md
+├── dist
+|  ├── extension.cjs
+|  └── extension.cjs.map
+├── esbuild.config.mjs
+├── eslint.config.mjs
+├── icon-theme.json
+├── language-configuration.json
+├── package.json
+├── pnpm-lock.yaml
+├── pnpm-workspace.yaml
+├── src
+|  ├── config
+|  |  ├── collieConfig.ts
+|  |  ├── constants.ts
+|  |  ├── helpers.ts
+|  |  └── types.ts
+|  ├── convert
+|  |  ├── collie
+|  |  |  ├── astToIr.ts
+|  |  |  ├── print.ts
+|  |  |  └── types.ts
+|  |  ├── export
+|  |  |  └── collieExport.ts
+|  |  ├── ir
+|  |  |  └── nodes.ts
+|  |  └── tsx
+|  |     ├── jsxToIr.ts
+|  |     ├── parseSelection.ts
+|  |     ├── print.ts
+|  |     └── types.ts
+|  ├── core
+|  |  └── logger
+|  |     ├── createLogger.ts
+|  |     ├── index.ts
+|  |     └── types.ts
+|  ├── extension.ts
+|  ├── features
+|  |  ├── completions
+|  |  |  ├── collieIdProvider.ts
+|  |  |  ├── htmlCollieIdProvider.ts
+|  |  |  └── provider.ts
+|  |  ├── config
+|  |  |  ├── discovery.ts
+|  |  |  └── warnings.ts
+|  |  ├── conversion
+|  |  |  ├── collieExportCommandsImpl.ts
+|  |  |  ├── collieFileWriter.ts
+|  |  |  ├── commands.ts
+|  |  |  ├── convertSelectionCommand.ts
+|  |  |  ├── helpers.ts
+|  |  |  ├── imports.ts
+|  |  |  ├── templateId.ts
+|  |  |  └── types.ts
+|  |  ├── css
+|  |  |  ├── classIndex.ts
+|  |  |  ├── commands.ts
+|  |  |  └── indexer.ts
+|  |  ├── customization
+|  |  |  ├── commands.ts
+|  |  |  ├── inference.ts
+|  |  |  ├── settingsWriter.ts
+|  |  |  └── ui.ts
+|  |  ├── diagnostics
+|  |  |  ├── codeActions.ts
+|  |  |  ├── compilerDiagnostics.ts
+|  |  |  ├── helpers
+|  |  |  |  ├── cache.ts
+|  |  |  |  ├── directives.ts
+|  |  |  |  ├── ranges.ts
+|  |  |  |  └── templateUsage.ts
+|  |  |  ├── provider.ts
+|  |  |  ├── tsPropsDiagnostics.ts
+|  |  |  └── types.ts
+|  |  ├── featureFlags.ts
+|  |  ├── formatting
+|  |  |  └── formatProvider.ts
+|  |  ├── helpers.ts
+|  |  ├── hover
+|  |  |  └── provider.ts
+|  |  ├── index.ts
+|  |  ├── lang
+|  |  |  ├── cacheWatcher.ts
+|  |  |  └── htmlAnchorWatcher.ts
+|  |  ├── navigation
+|  |  |  ├── commands.ts
+|  |  |  ├── definitionProvider.ts
+|  |  |  ├── documentSymbols.ts
+|  |  |  ├── helpers.ts
+|  |  |  ├── htmlToCollieDefinitionProvider.ts
+|  |  |  └── types.ts
+|  |  ├── semanticTokens
+|  |  |  ├── helpers
+|  |  |  |  ├── comments.ts
+|  |  |  |  ├── patterns.ts
+|  |  |  |  └── tokens.ts
+|  |  |  ├── legend.ts
+|  |  |  ├── provider.ts
+|  |  |  ├── tokenize.ts
+|  |  |  └── types.ts
+|  |  ├── symbols
+|  |  |  └── workspaceSymbolProvider.ts
+|  |  └── types.ts
+|  ├── format
+|  |  ├── README.md
+|  |  ├── fallback.ts
+|  |  ├── formatter.ts
+|  |  ├── parser
+|  |  |  ├── ast.ts
+|  |  |  ├── diagnostics.ts
+|  |  |  ├── helpers
+|  |  |  |  ├── directives.ts
+|  |  |  |  ├── errors.ts
+|  |  |  |  ├── lexer.ts
+|  |  |  |  ├── nodes.ts
+|  |  |  |  └── whitespace.ts
+|  |  |  ├── index.ts
+|  |  |  ├── parse.ts
+|  |  |  └── types.ts
+|  |  └── printer
+|  |     ├── print.ts
+|  |     ├── text.ts
+|  |     └── types.ts
+|  ├── lang
+|  |  ├── cache.ts
+|  |  ├── htmlAnchorIndex.ts
+|  |  ├── index.ts
+|  |  ├── navigation
+|  |  |  ├── helpers.ts
+|  |  |  └── types.ts
+|  |  ├── navigation.ts
+|  |  ├── parseDocument.ts
+|  |  ├── templateIndex
+|  |  |  ├── helpers
+|  |  |  |  ├── debounce.ts
+|  |  |  |  ├── exclude.ts
+|  |  |  |  ├── parseBlocks.ts
+|  |  |  |  └── scan.ts
+|  |  |  ├── index.ts
+|  |  |  └── types.ts
+|  |  └── templateIndex.ts
+|  ├── logger.ts
+|  ├── shared
+|  |  ├── helpers
+|  |  |  ├── debounce.ts
+|  |  |  ├── regex.ts
+|  |  |  ├── text.ts
+|  |  |  ├── uri.ts
+|  |  |  └── vscodeRanges.ts
+|  |  └── types
+|  |     └── timers.ts
+|  └── vscode.d.ts
+├── syntaxes
+|  └── collie.tmLanguage.json
+├── tsconfig.build.json
+└── tsconfig.json
