@@ -1,22 +1,21 @@
-import { workspace, TextDocument } from 'vscode';
-import type { FeatureContext } from '..';
-import { registerFeature } from '..';
-import { 
-  scanWorkspaceHtmlFiles, 
-  updateHtmlAnchors, 
-  removeHtmlAnchors,
-  clearHtmlAnchorIndex
+import type { TextDocument } from 'vscode';
+import { workspace } from 'vscode';
+import type { FeatureContext } from '../types';
+import {
+  scanWorkspaceHtmlFiles,
+  updateHtmlAnchors,
+  removeHtmlAnchors
 } from '../../lang/htmlAnchorIndex';
 
 function isHtmlDocument(document: TextDocument): boolean {
   return document.languageId === 'html' || document.fileName.endsWith('.html');
 }
 
-async function activateHtmlAnchorWatcher(context: FeatureContext) {
+export async function registerHtmlAnchorWatcher(context: FeatureContext) {
   // Initial scan of workspace HTML files
   await scanWorkspaceHtmlFiles();
   context.logger.info('Initial HTML anchor index built.');
-  
+
   // Watch for HTML file changes
   context.register(
     workspace.onDidChangeTextDocument(event => {
@@ -25,7 +24,7 @@ async function activateHtmlAnchorWatcher(context: FeatureContext) {
       }
     })
   );
-  
+
   // Watch for HTML file saves
   context.register(
     workspace.onDidSaveTextDocument(document => {
@@ -34,7 +33,7 @@ async function activateHtmlAnchorWatcher(context: FeatureContext) {
       }
     })
   );
-  
+
   // Watch for HTML file opening
   context.register(
     workspace.onDidOpenTextDocument(document => {
@@ -43,7 +42,7 @@ async function activateHtmlAnchorWatcher(context: FeatureContext) {
       }
     })
   );
-  
+
   // Watch for HTML file closing
   context.register(
     workspace.onDidCloseTextDocument(document => {
@@ -52,7 +51,7 @@ async function activateHtmlAnchorWatcher(context: FeatureContext) {
       }
     })
   );
-  
+
   // Watch for file creation
   context.register(
     workspace.onDidCreateFiles(async event => {
@@ -68,7 +67,7 @@ async function activateHtmlAnchorWatcher(context: FeatureContext) {
       }
     })
   );
-  
+
   // Watch for file deletion
   context.register(
     workspace.onDidDeleteFiles(event => {
@@ -79,7 +78,7 @@ async function activateHtmlAnchorWatcher(context: FeatureContext) {
       }
     })
   );
-  
+
   // Watch for file rename
   context.register(
     workspace.onDidRenameFiles(async event => {
@@ -98,7 +97,7 @@ async function activateHtmlAnchorWatcher(context: FeatureContext) {
       }
     })
   );
-  
+
   // Watch for workspace folder changes
   context.register(
     workspace.onDidChangeWorkspaceFolders(async () => {
@@ -106,8 +105,6 @@ async function activateHtmlAnchorWatcher(context: FeatureContext) {
       context.logger.info('HTML anchor index rebuilt after workspace change.');
     })
   );
-  
+
   context.logger.info('HTML anchor index watcher registered.');
 }
-
-registerFeature(activateHtmlAnchorWatcher);

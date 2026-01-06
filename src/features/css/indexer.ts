@@ -1,15 +1,15 @@
-import {
+import type {
   FileSystemWatcher,
+  Uri} from 'vscode';
+import {
   RelativePattern,
-  Uri,
   window,
   workspace,
   type ConfigurationChangeEvent,
   type TextDocument,
   type WorkspaceFolder
 } from 'vscode';
-import type { FeatureContext } from '..';
-import { registerFeature } from '..';
+import type { FeatureContext } from '../types';
 import { onDidChangeCollieConfig, resolveCollieConfigForDocument } from '../../config/collieConfig';
 import { CssClassIndex, getCssIncludeGlob, isExcludedCssPath, isSupportedCssFile } from './classIndex';
 
@@ -167,10 +167,10 @@ export function getUnknownClassOverrideSetting(): 'inherit' | 'on' | 'off' {
   return 'inherit';
 }
 
-type CssIndexDecision = {
+interface CssIndexDecision {
   enable: boolean;
   reason: 'enabled' | 'no-collie-doc' | 'tailwind' | 'disabled' | 'override-off';
-};
+}
 
 async function shouldEnableCssIndex(folder: WorkspaceFolder, context: FeatureContext): Promise<CssIndexDecision> {
   const collieDocs = workspace.textDocuments.filter(
@@ -267,7 +267,7 @@ function affectsUnknownClassOverride(event: ConfigurationChangeEvent): boolean {
   return event.affectsConfiguration(`collie.${UNKNOWN_CLASS_OVERRIDE_KEY}`);
 }
 
-function activateCssIndex(context: FeatureContext) {
+export function registerCssIndexer(context: FeatureContext) {
   const refreshAll = () => {
     for (const folder of workspace.workspaceFolders ?? []) {
       void refreshWorkspaceIndex(folder, context);
@@ -286,6 +286,20 @@ function activateCssIndex(context: FeatureContext) {
         if (folder) {
           const indexEntry = workspaceIndexes.get(folder.uri.fsPath);
           indexEntry?.scheduleIndex(document.uri);
+        }
+      }
+    })
+  );
+
+  // diagnostic-upgrade: Reindex CSS files on text changes (not just saves)
+  // This allows CSS class diagnostics to update based on unsaved edits
+  context.register(
+    workspace.onDidChangeTextDocument(event => {
+      if (isCssDocument(event.document)) {
+        const folder = workspace.getWorkspaceFolder(event.document.uri);
+        if (folder) {
+          const indexEntry = workspaceIndexes.get(folder.uri.fsPath);
+          indexEntry?.scheduleIndex(event.document.uri);
         }
       }
     })
@@ -357,5 +371,3 @@ function activateCssIndex(context: FeatureContext) {
 
   context.logger.info('Collie CSS class indexer registered.');
 }
-
-registerFeature(activateCssIndex);

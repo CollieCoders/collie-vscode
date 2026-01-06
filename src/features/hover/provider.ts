@@ -1,7 +1,6 @@
-import { Hover, MarkdownString, languages, TextDocument } from 'vscode';
-import type { Position } from 'vscode';
-import type { FeatureContext } from '..';
-import { registerFeature } from '..';
+import { Hover, MarkdownString, languages } from 'vscode';
+import type { Position , TextDocument } from 'vscode';
+import type { FeatureContext } from '../types';
 import type {
   ClassAliasDecl,
   ConditionalNode,
@@ -21,19 +20,19 @@ type DirectiveKind = '@if' | '@elseIf' | '@else' | '@for';
 const DIRECTIVE_HOVER_CONTENT: Record<DirectiveKind, { description: string; example: string }> = {
   '@if': {
     description: 'Start a conditional block that renders when the expression is truthy.',
-    example: `@if (condition)\n  div.content`
+    example: '@if (condition)\n  div.content'
   },
   '@elseIf': {
     description: 'Optional branch evaluated when previous conditions fail.',
-    example: `@elseIf (otherCondition)\n  span.note`
+    example: '@elseIf (otherCondition)\n  span.note'
   },
   '@else': {
     description: 'Fallback branch rendered when all previous conditions fail.',
-    example: `@else\n  | Fallback content`
+    example: '@else\n  | Fallback content'
   },
   '@for': {
     description: 'Loop over an iterable and render the block for each item.',
-    example: `@for item in items\n  div.item {item.name}`
+    example: '@for item in items\n  div.item {item.name}'
   }
 };
 
@@ -208,7 +207,7 @@ function provideHover(document: TextDocument, position: Position, context: Featu
   return undefined;
 }
 
-function activateHoverFeature(context: FeatureContext) {
+export function registerHoverProvider(context: FeatureContext) {
   const provider = languages.registerHoverProvider({ language: 'collie' }, {
     provideHover(document, position) {
       return provideHover(document, position, context);
@@ -218,8 +217,6 @@ function activateHoverFeature(context: FeatureContext) {
   context.register(provider);
   context.logger.info('Collie hover provider registered.');
 }
-
-registerFeature(activateHoverFeature);
 
 function getClassAliasHover(offset: number, root: RootNode): Hover | undefined {
   const decl = root.classAliases;

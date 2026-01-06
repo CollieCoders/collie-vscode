@@ -1,4 +1,5 @@
-import { workspace, Uri, TextDocument, EventEmitter, Event, Range, Position } from 'vscode';
+import type { Event} from 'vscode';
+import { workspace, Uri, TextDocument, EventEmitter, Range, Position } from 'vscode';
 // import * as path from 'path';
 
 // Maps logical template ID -> Set of HTML file URIs that contain id="<id>-collie"
@@ -124,7 +125,7 @@ export function updateHtmlAnchors(uri: Uri, htmlContent: string): void {
   // Remove old range entries for this URI
   const keysToDelete: string[] = [];
   for (const key of htmlAnchorRanges.keys()) {
-    if (key.startsWith(uriString + ':')) {
+    if (key.startsWith(`${uriString  }:`)) {
       keysToDelete.push(key);
     }
   }
@@ -165,7 +166,7 @@ export function removeHtmlAnchors(uri: Uri): void {
   // Remove range entries for this URI
   const keysToDelete: string[] = [];
   for (const key of htmlAnchorRanges.keys()) {
-    if (key.startsWith(uriString + ':')) {
+    if (key.startsWith(`${uriString  }:`)) {
       keysToDelete.push(key);
     }
   }

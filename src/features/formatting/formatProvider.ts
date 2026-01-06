@@ -1,7 +1,6 @@
 import { languages, workspace } from 'vscode';
 import type { TextDocument, FormattingOptions, CancellationToken } from 'vscode';
-import type { FeatureContext } from '..';
-import { registerFeature } from '..';
+import type { FeatureContext } from '../types';
 import { formatDocument } from '../../format/formatter';
 import type { FormatterOptions } from '../../format/formatter';
 
@@ -22,19 +21,16 @@ async function provideFormattingEdits(
   ctx: FeatureContext
 ) {
   try {
-    if (token.isCancellationRequested) {
-      return [];
-    }
+    if (token.isCancellationRequested) {return [];}
 
     const result = formatDocument(document, readFormatterOptions());
 
-    if (token.isCancellationRequested) {
-      return [];
-    }
+    if (token.isCancellationRequested) {return [];}
 
     if (result.usedFallback) {
       ctx.logger.warn('Collie AST formatter failed; fallback formatter applied.', result.error);
     }
+
     return result.edits;
   } catch (error) {
     ctx.logger.warn('Collie formatter failed; returning no edits.', error);
@@ -42,7 +38,7 @@ async function provideFormattingEdits(
   }
 }
 
-function activateFormattingFeature(ctx: FeatureContext) {
+export function registerFormatProvider(ctx: FeatureContext) {
   const provider = languages.registerDocumentFormattingEditProvider(
     { language: 'collie' },
     {
@@ -55,5 +51,3 @@ function activateFormattingFeature(ctx: FeatureContext) {
   ctx.register(provider);
   ctx.logger.info('Collie document formatter registered.');
 }
-
-registerFeature(activateFormattingFeature);

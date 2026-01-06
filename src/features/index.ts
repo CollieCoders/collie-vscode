@@ -1,21 +1,12 @@
-import type { Disposable, ExtensionContext } from 'vscode';
+import type { ExtensionContext } from 'vscode';
 import type { Logger } from '../logger';
+import type { FeatureContext } from './types';
+import { runFeature } from './helpers';
 
-export interface FeatureContext {
-  readonly extensionContext: ExtensionContext;
-  readonly logger: Logger;
-  register<T extends Disposable>(disposable: T): T;
-}
-
-export type FeatureRegistration = (context: FeatureContext) => void | Promise<void>;
-
-const featureRegistry: FeatureRegistration[] = [];
-
-export function registerFeature(registration: FeatureRegistration) {
-  featureRegistry.push(registration);
-}
-
-export async function activateFeatures(extensionContext: ExtensionContext, logger: Logger) {
+export async function activateFeatures(
+  extensionContext: ExtensionContext,
+  logger: Logger
+): Promise<void> {
   const featureContext: FeatureContext = {
     extensionContext,
     logger,
@@ -25,29 +16,71 @@ export async function activateFeatures(extensionContext: ExtensionContext, logge
     }
   };
 
-  for (const registration of featureRegistry) {
-    await registration(featureContext);
-  }
+  await runFeature('featureFlags', registerFeatureFlagWatcher, featureContext);
+
+  await runFeature('formatting/formatProvider', registerFormatProvider, featureContext);
+  await runFeature('semanticTokens/provider', registerSemanticTokensProvider, featureContext);
+
+  await runFeature('navigation/documentSymbols', registerDocumentSymbols, featureContext);
+  await runFeature('navigation/definitionProvider', registerDefinitionProvider, featureContext);
+  await runFeature('navigation/htmlToCollieDefinitionProvider', registerHtmlToCollieDefinitionProvider, featureContext);
+  await runFeature('navigation/commands', registerNavigationCommands, featureContext);
+
+  await runFeature('diagnostics/provider', registerDiagnosticsProvider, featureContext);
+  await runFeature('diagnostics/codeActions', registerDiagnosticsCodeActions, featureContext);
+  await runFeature('diagnostics/tsPropsDiagnostics', registerTsPropsDiagnostics, featureContext);
+
+  await runFeature('hover/provider', registerHoverProvider, featureContext);
+
+  await runFeature('completions/provider', registerCompletionsProvider, featureContext);
+  await runFeature('completions/collieIdProvider', registerCollieIdCompletionProvider, featureContext);
+  await runFeature('completions/htmlCollieIdProvider', registerHtmlCollieIdProvider, featureContext);
+
+  await runFeature('symbols/workspaceSymbolProvider', registerWorkspaceSymbolProvider, featureContext);
+
+  await runFeature('lang/templateIndex', registerTemplateIndex, featureContext);
+  await runFeature('lang/cacheWatcher', registerLangCacheWatcher, featureContext);
+
+  await runFeature('config/discovery', registerConfigDiscovery, featureContext);
+
+  await runFeature('css/indexer', registerCssIndexer, featureContext);
+  await runFeature('css/commands', registerCssCommands, featureContext);
+
+  await runFeature('customization/commands', registerCustomizationCommands, featureContext);
+
+  await runFeature('conversion/commands', registerConversionCommands, featureContext);
 }
 
-// Ensure built-in feature modules register themselves when this module loads.
-import './featureFlags';
-import './formatting/formatProvider';
-import './semanticTokens/provider';
-import './navigation/documentSymbols';
-import './navigation/definitionProvider';
-import './navigation/htmlToCollieDefinitionProvider';
-import './navigation/commands';
-import './diagnostics/provider';
-import './diagnostics/codeActions';
-import './diagnostics/tsPropsDiagnostics';
-import './hover/provider';
-import './completions/provider';
-import './completions/htmlCollieIdProvider';
-import './symbols/workspaceSymbolProvider';
-import './lang/cacheWatcher';
-import './config/discovery';
-import './css/indexer';
-import './css/commands';
-import './customization/commands';
-import './conversion/commands';
+import { registerFeatureFlagWatcher } from './featureFlags';
+
+import { registerFormatProvider } from './formatting/formatProvider';
+import { registerSemanticTokensProvider } from './semanticTokens/provider';
+
+import { registerDocumentSymbols } from './navigation/documentSymbols';
+import { registerDefinitionProvider } from './navigation/definitionProvider';
+import { registerHtmlToCollieDefinitionProvider } from './navigation/htmlToCollieDefinitionProvider';
+import { registerNavigationCommands } from './navigation/commands';
+
+import { registerDiagnosticsProvider } from './diagnostics/provider';
+import { registerDiagnosticsCodeActions } from './diagnostics/codeActions';
+import { registerTsPropsDiagnostics } from './diagnostics/tsPropsDiagnostics';
+
+import { registerHoverProvider } from './hover/provider';
+
+import { registerCompletionsProvider } from './completions/provider';
+import { registerCollieIdCompletionProvider } from './completions/collieIdProvider';
+import { registerHtmlCollieIdProvider } from './completions/htmlCollieIdProvider';
+
+import { registerWorkspaceSymbolProvider } from './symbols/workspaceSymbolProvider';
+
+import { registerTemplateIndex } from '../lang/templateIndex';
+import { registerLangCacheWatcher } from './lang/cacheWatcher';
+
+import { registerConfigDiscovery } from './config/discovery';
+
+import { registerCssIndexer } from './css/indexer';
+import { registerCssCommands } from './css/commands';
+
+import { registerCustomizationCommands } from './customization/commands';
+
+import { registerConversionCommands } from './conversion/commands';

@@ -1,5 +1,5 @@
 import { env, window, workspace, type OutputChannel, type TextDocument } from 'vscode';
-import type { FeatureContext } from '..';
+import type { FeatureContext } from '../types';
 import type { CollieExportResult, CollieExportTarget } from '../../convert/export/collieExport';
 import { exportCollieDocument } from '../../convert/export/collieExport';
 import { warnIfMissingConfig, warnIfMissingTooling } from '../config/warnings';

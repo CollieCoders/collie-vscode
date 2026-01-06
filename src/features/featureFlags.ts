@@ -1,6 +1,5 @@
 import { EventEmitter, workspace } from 'vscode';
-import type { FeatureContext } from '.';
-import { registerFeature } from '.';
+import type { FeatureContext } from './types';
 
 export type CollieFeatureFlag = 'diagnostics' | 'completions' | 'navigation' | 'hover';
 
@@ -32,7 +31,7 @@ export function isFeatureFlagEnabled(flag: CollieFeatureFlag): boolean {
   return currentFlags[flag];
 }
 
-function readFeatureFlags(): FeatureFlagSnapshot {
+export function readFeatureFlags(): FeatureFlagSnapshot {
   const config = workspace.getConfiguration('collie');
   return {
     diagnostics: config.get<boolean>('features.diagnostics', DEFAULT_FLAGS.diagnostics),
@@ -42,7 +41,7 @@ function readFeatureFlags(): FeatureFlagSnapshot {
   };
 }
 
-function snapshotsEqual(a: FeatureFlagSnapshot, b: FeatureFlagSnapshot): boolean {
+export function snapshotsEqual(a: FeatureFlagSnapshot, b: FeatureFlagSnapshot): boolean {
   return (
     a.diagnostics === b.diagnostics &&
     a.completions === b.completions &&
@@ -51,7 +50,7 @@ function snapshotsEqual(a: FeatureFlagSnapshot, b: FeatureFlagSnapshot): boolean
   );
 }
 
-function activateFeatureFlagWatcher(context: FeatureContext) {
+export function registerFeatureFlagWatcher(context: FeatureContext) {
   currentFlags = readFeatureFlags();
 
   const configListener = workspace.onDidChangeConfiguration(event => {
@@ -69,5 +68,3 @@ function activateFeatureFlagWatcher(context: FeatureContext) {
   context.register(configListener);
   context.logger.info('Collie feature flag system initialized.');
 }
-
-registerFeature(activateFeatureFlagWatcher);

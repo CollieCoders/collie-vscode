@@ -38,7 +38,7 @@ export function printCollieDocument(nodes: readonly IrNode[], options: ColliePri
     return '';
   }
 
-  return lines.join('\n') + '\n';
+  return `${lines.join('\n')  }\n`;
 }
 
 function printNode(node: IrNode, level: number, ctx: PrinterContext, out: string[]) {
@@ -58,7 +58,8 @@ function printNode(node: IrNode, level: number, ctx: PrinterContext, out: string
       }
       break;
     case 'conditional':
-      throw new Error('Conditional IR nodes are not supported in the Collie printer.');
+      printConditional(node, level, ctx, out);
+      break;
     default: {
       const exhaustive: never = node;
       throw new Error(`Unsupported IR node: ${(exhaustive as IrNode).kind}`);
@@ -103,14 +104,25 @@ function formatProps(props: readonly (IrProp | IrExpression)[], ctx: PrinterCont
   const parts: string[] = [];
   for (const prop of props) {
     if (prop.kind === 'prop') {
-      const value = prop.value !== undefined ? `=${prop.value}` : '';
+      const value = prop.value !== undefined ? `=${normalizePropValue(prop.value)}` : '';
       parts.push(`${prop.name}${value}`);
       continue;
     }
     parts.push(formatExpressionPayload(prop.expressionText));
   }
 
-  return ' ' + parts.join(' ');
+  return `(${parts.join(' ')})`;
+}
+
+function normalizePropValue(value: string): string {
+  // If the value contains curly braces (expression), normalize its whitespace
+  if (value.startsWith('{') && value.endsWith('}')) {
+    const inner = value.slice(1, -1);
+    const normalized = normalizeExpressionWhitespace(inner);
+    return `{${normalized}}`;
+  }
+  // For string literals and other values, keep them as-is
+  return value;
 }
 
 function getInlineChild(children: readonly IrNode[], ctx: PrinterContext): string | undefined {
@@ -142,7 +154,22 @@ function printExpression(node: IrExpression, level: number, ctx: PrinterContext,
 }
 
 function formatExpressionPayload(expression: string) {
-  return `{{ ${expression} }}`;
+  // Collapse newlines and excessive whitespace to ensure attribute groups stay on one line
+  // Preserve whitespace in string literals by doing a simple line break replacement
+  const normalized = normalizeExpressionWhitespace(expression);
+  return `{{ ${normalized} }}`;
+}
+
+function normalizeExpressionWhitespace(text: string): string {
+  // Replace newlines with spaces, but be careful about string literals
+  // This is a simple heuristic: collapse sequences of whitespace to single spaces
+  // More sophisticated string-aware parsing would be needed for perfect handling,
+  // but this should work for most generated code
+  return text
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .join(' ');
 }
 
 function createIndent(level: number, ctx: PrinterContext) {
@@ -151,4 +178,35 @@ function createIndent(level: number, ctx: PrinterContext) {
   }
 
   return ctx.indentUnit.repeat(level);
+}
+
+function formatInlineText(node: IrText, ctx: PrinterContext): string {
+  if (!node.value) {
+    return ctx.options.spaceAroundPipe ? '| ' : '|';
+  }
+  return ctx.options.spaceAroundPipe ? `| ${node.value}` : `|${node.value}`;
+}
+
+function printConditional(node: IrConditional, level: number, ctx: PrinterContext, out: string[]) {
+  if (node.branches.length === 0) {
+    return;
+  }
+
+  for (let i = 0; i < node.branches.length; i += 1) {
+    const branch = node.branches[i];
+    const indent = createIndent(level, ctx);
+    const directive = resolveConditionalDirective(i, branch.test);
+    const line = branch.test ? `${indent}${directive} (${branch.test})` : `${indent}${directive}`;
+    out.push(line);
+    for (const child of branch.children) {
+      printNode(child, level + 1, ctx, out);
+    }
+  }
+}
+
+function resolveConditionalDirective(index: number, test: string | undefined): string {
+  if (index === 0) {
+    return '@if';
+  }
+  return test ? '@elseIf' : '@else';
 }

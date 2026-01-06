@@ -1,37 +1,46 @@
 import {
   CodeAction,
   CodeActionKind,
-  CodeActionProvider,
   EndOfLine,
   languages,
-  Position,
   Range,
-  TextDocument,
+  Uri,
   WorkspaceEdit,
   commands,
   window,
-  workspace,
-  Uri
+  workspace
 } from 'vscode';
-import type { Diagnostic } from 'vscode';
-import type { FeatureContext } from '..';
-import { registerFeature } from '..';
-import { getTemplateIdEntries } from '../../lang/cache';
-// import * as path from 'path';
+import type { Diagnostic ,
+  CodeActionProvider,
+  Position,
+  TextDocument} from 'vscode';
+import type { FeatureContext } from '../types';
+import { listByFile, onDidChangeTemplateIndex, type TemplateLocation } from '../../lang/templateIndex';
 
 const ID_DIRECTIVE_PATTERN = /^(?:#|)id(?:\s+|:\s*|=\s*)(.+)$/i;
+const ID_DIRECTIVE_WITH_VALUE_PATTERN = /^(\s*(?:#|)id(?:\s+|:\s*|=\s*))(.*)$/i;
+const TEMPLATE_ID_PATTERN = /^[A-Za-z][A-Za-z0-9._-]*$/;
+const COLLIE_GLOB = '**/*.collie';
+const COLLIE_EXCLUDE_GLOB = '**/node_modules/**';
 const DEFAULT_PROP_TYPE = 'unknown';
+const FILE_IGNORE_PATTERN = /^\s*#collie-ignore-file\s+(.+?)\s*$/;
+const LINE_IGNORE_PATTERN = /^\s*#collie-ignore-next-line\s+(.+?)\s*$/;
 
-type DiagnosticFix = {
+let templateIndexVersion = 0;
+let cachedTemplateEntriesVersion = -1;
+let cachedTemplateEntries: Map<string, TemplateLocation[]> = new Map();
+let cachedTemplateEntriesPromise: Promise<Map<string, TemplateLocation[]>> | null = null;
+
+interface DiagnosticFix {
   range: Range;
   replacementText: string;
-};
+}
 
-type DiagnosticData = {
+interface DiagnosticData {
   fix?: DiagnosticFix;
   kind?: string;
   propName?: string;
-};
+}
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -44,6 +53,44 @@ function getEol(document: TextDocument): string {
 function getIndentSize(): number {
   const config = workspace.getConfiguration('collie');
   return Math.max(1, config.get<number>('format.indentSize', 2));
+}
+
+function invalidateTemplateEntryCache(): void {
+  templateIndexVersion += 1;
+  cachedTemplateEntriesVersion = -1;
+  cachedTemplateEntries.clear();
+  cachedTemplateEntriesPromise = null;
+}
+
+async function getTemplateEntriesById(): Promise<Map<string, TemplateLocation[]>> {
+  if (cachedTemplateEntriesVersion === templateIndexVersion) {
+    return cachedTemplateEntries;
+  }
+
+  if (cachedTemplateEntriesPromise) {
+    return cachedTemplateEntriesPromise;
+  }
+
+  cachedTemplateEntriesPromise = (async () => {
+    const entriesById = new Map<string, TemplateLocation[]>();
+    const files = await workspace.findFiles(COLLIE_GLOB, COLLIE_EXCLUDE_GLOB);
+
+    for (const uri of files) {
+      const entries = listByFile(uri);
+      for (const entry of entries) {
+        const existing = entriesById.get(entry.id) ?? [];
+        existing.push(entry);
+        entriesById.set(entry.id, existing);
+      }
+    }
+
+    cachedTemplateEntries = entriesById;
+    cachedTemplateEntriesVersion = templateIndexVersion;
+    cachedTemplateEntriesPromise = null;
+    return entriesById;
+  })();
+
+  return cachedTemplateEntriesPromise;
 }
 
 function findPropsBlock(document: TextDocument): { line: number; indent: number; insertLine: number } | null {
@@ -228,6 +275,109 @@ function buildAddPropDeclarationAction(
   return action;
 }
 
+function hasFileIgnoreDirective(document: TextDocument, code: string): boolean {
+  for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+    const line = document.lineAt(lineNumber).text;
+    const match = FILE_IGNORE_PATTERN.exec(line);
+    if (match) {
+      const codes = match[1].trim().split(/\s+/);
+      if (codes.includes(code)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function hasLineIgnoreDirective(document: TextDocument, lineNumber: number, code: string): boolean {
+  if (lineNumber === 0) {
+    return false;
+  }
+  const previousLine = document.lineAt(lineNumber - 1).text;
+  const match = LINE_IGNORE_PATTERN.exec(previousLine);
+  if (match) {
+    const codes = match[1].trim().split(/\s+/);
+    return codes.includes(code);
+  }
+  return false;
+}
+
+function buildIgnoreOnLineAction(
+  document: TextDocument,
+  diagnostic: Diagnostic,
+  code: string
+): CodeAction | null {
+  const diagnosticLine = diagnostic.range.start.line;
+  
+  // Check if directive already exists
+  if (hasLineIgnoreDirective(document, diagnosticLine, code)) {
+    return null;
+  }
+
+  const targetLine = document.lineAt(diagnosticLine);
+  const indent = ' '.repeat(targetLine.firstNonWhitespaceCharacterIndex);
+  const eol = getEol(document);
+  const directiveText = `${indent}#collie-ignore-next-line ${code}${eol}`;
+
+  const edit = new WorkspaceEdit();
+  edit.insert(document.uri, targetLine.range.start, directiveText);
+
+  const action = new CodeAction(
+    `Ignore this ${code} on this line`,
+    CodeActionKind.QuickFix
+  );
+  action.edit = edit;
+  action.diagnostics = [diagnostic];
+  return action;
+}
+
+function buildIgnoreInFileAction(
+  document: TextDocument,
+  diagnostic: Diagnostic,
+  code: string
+): CodeAction | null {
+  // Check if directive already exists
+  if (hasFileIgnoreDirective(document, code)) {
+    return null;
+  }
+
+  const eol = getEol(document);
+  let insertLine = 0;
+  
+  // Find insertion point (after #id if present, otherwise at top)
+  for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+    const line = document.lineAt(lineNumber).text;
+    const trimmed = line.trim();
+    
+    if (trimmed.length === 0) {
+      continue;
+    }
+    
+    if (ID_DIRECTIVE_PATTERN.test(trimmed)) {
+      insertLine = lineNumber + 1;
+      break;
+    }
+    
+    // If we hit a non-id directive, insert before it
+    insertLine = lineNumber;
+    break;
+  }
+
+  const directiveText = `#collie-ignore-file ${code}${eol}`;
+  const { position, prefix } = getInsertPosition(document, insertLine);
+  
+  const edit = new WorkspaceEdit();
+  edit.insert(document.uri, position, `${prefix}${directiveText}`);
+
+  const action = new CodeAction(
+    `Ignore this ${code} in this file`,
+    CodeActionKind.QuickFix
+  );
+  action.edit = edit;
+  action.diagnostics = [diagnostic];
+  return action;
+}
+
 function buildFixAllAction(document: TextDocument, diagnostics: Diagnostic[]): CodeAction | null {
   const edits = collectFixEdits(document, diagnostics);
   if (edits.length === 0) {
@@ -245,7 +395,7 @@ function buildFixAllAction(document: TextDocument, diagnostics: Diagnostic[]): C
 }
 
 function collectFixEdits(document: TextDocument, diagnostics: Diagnostic[]): DiagnosticFix[] {
-  const fixes: Array<DiagnosticFix & { startOffset: number; endOffset: number }> = [];
+  const fixes: (DiagnosticFix & { startOffset: number; endOffset: number })[] = [];
 
   for (const diagnostic of diagnostics) {
     const data = diagnostic as DiagnosticData | undefined;
@@ -272,25 +422,60 @@ function collectFixEdits(document: TextDocument, diagnostics: Diagnostic[]): Dia
   return filtered;
 }
 
+function findNearestIdDirective(
+  document: TextDocument,
+  startLine: number
+): { line: number; range: Range; currentId: string } | null {
+  for (let lineNumber = startLine; lineNumber >= 0; lineNumber -= 1) {
+    const lineText = document.lineAt(lineNumber).text;
+    const match = ID_DIRECTIVE_WITH_VALUE_PATTERN.exec(lineText);
+    if (!match) {
+      continue;
+    }
+
+    const prefix = match[1] ?? '';
+    const value = match[2] ?? '';
+    const trimmed = value.trim();
+    const valueOffset = trimmed ? value.indexOf(trimmed) : 0;
+    const startCharacter = prefix.length + Math.max(valueOffset, 0);
+    const endCharacter = trimmed ? startCharacter + trimmed.length : startCharacter;
+
+    return {
+      line: lineNumber,
+      range: new Range(lineNumber, startCharacter, lineNumber, endCharacter),
+      currentId: trimmed
+    };
+  }
+
+  return null;
+}
+
 class CollieIdCodeActionProvider implements CodeActionProvider {
-  provideCodeActions(document: TextDocument, range: Range): CodeAction[] {
+  async provideCodeActions(document: TextDocument, range: Range): Promise<CodeAction[]> {
     const actions: CodeAction[] = [];
     const diagnostics = languages.getDiagnostics(document.uri);
+    let entriesById: Map<string, TemplateLocation[]> | null = null;
 
     // Find ID collision diagnostics
     const collisionDiagnostics = diagnostics.filter(diag =>
       diag.code === 'COLLIE403' && diag.range.intersection(range)
     );
 
+    if (collisionDiagnostics.length > 0) {
+      entriesById = await getTemplateEntriesById();
+    }
+
     for (const diagnostic of collisionDiagnostics) {
       // Extract the template ID from the diagnostic message
-      const match = diagnostic.message.match(/Duplicate Collie template id "([^"]+)"/);
+      const match =
+        diagnostic.message.match(/Duplicate Collie template id "([^"]+)"/) ??
+        diagnostic.message.match(/Duplicate #id "([^"]+)"/);
       if (!match) {
         continue;
       }
 
       const templateId = match[1];
-      const entries = getTemplateIdEntries(templateId);
+      const entries = entriesById?.get(templateId) ?? [];
       const currentUri = document.uri.toString();
       const others = entries.filter(entry => entry.uri.toString() !== currentUri);
 
@@ -309,6 +494,8 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
 
       // Action 2: Open conflicting templates
       if (others.length > 0) {
+        const otherUris = Array.from(new Set(others.map(entry => entry.uri.toString())))
+          .map(uri => Uri.parse(uri));
         const openAction = new CodeAction(
           `Open conflicting template${others.length > 1 ? 's' : ''}`,
           CodeActionKind.QuickFix
@@ -316,57 +503,29 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
         openAction.command = {
           title: 'Open conflicting templates',
           command: 'collie.openConflictingTemplates',
-          arguments: [others.map(e => e.uri)]
+          arguments: [otherUris]
         };
         openAction.diagnostics = [diagnostic];
         actions.push(openAction);
       }
     }
 
-    // Find missing HTML placeholder diagnostics
-    const placeholderDiagnostics = diagnostics.filter(diag =>
-      diag.code === 'COLLIE404' && diag.range.intersection(range)
-    );
-
-    for (const diagnostic of placeholderDiagnostics) {
-      // Extract the template ID from the diagnostic message
-      const match = diagnostic.message.match(/Template id "([^"]+)" has no matching HTML placeholder/);
-      if (!match) {
-        continue;
-      }
-
-      const templateId = match[1];
-      const placeholderId = `${templateId}-collie`;
-
-      // Action 1: Search workspace for the placeholder ID
-      const searchAction = new CodeAction(
-        `Search workspace for "${placeholderId}"`,
-        CodeActionKind.QuickFix
-      );
-      searchAction.command = {
-        title: 'Search workspace',
-        command: 'workbench.action.findInFiles',
-        arguments: [{ query: placeholderId, isRegex: false }]
-      };
-      searchAction.diagnostics = [diagnostic];
-      actions.push(searchAction);
-
-      // Action 2: Open HTML files in workspace
-      const openHtmlAction = new CodeAction(
-        'Open HTML files in workspace',
-        CodeActionKind.QuickFix
-      );
-      openHtmlAction.command = {
-        title: 'Open HTML files',
-        command: 'collie.openWorkspaceHtmlFiles'
-      };
-      openHtmlAction.diagnostics = [diagnostic];
-      actions.push(openHtmlAction);
-    }
-
     // Compiler-provided fixes and props actions
     const actionableDiagnostics = diagnostics.filter(diag => diag.range.intersection(range));
     for (const diagnostic of actionableDiagnostics) {
+      // Add ignore quick fixes for diagnostics with string codes
+      if (typeof diagnostic.code === 'string') {
+        const ignoreLineAction = buildIgnoreOnLineAction(document, diagnostic, diagnostic.code);
+        if (ignoreLineAction) {
+          actions.push(ignoreLineAction);
+        }
+        
+        const ignoreFileAction = buildIgnoreInFileAction(document, diagnostic, diagnostic.code);
+        if (ignoreFileAction) {
+          actions.push(ignoreFileAction);
+        }
+      }
+
       const data = diagnostic as DiagnosticData | undefined;
       if (!data) {
         continue;
@@ -384,7 +543,7 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
       }
 
         if (data.kind === 'removePropDeclaration') {
-          actions.push(buildRemovePropAction(document, diagnostic, data.fix));
+          actions.push(buildRemovePropDeclaration(document, diagnostic, data.fix));
         }
       }
 
@@ -405,7 +564,7 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
   }
 }
 
-function activateIdCodeActions(context: FeatureContext) {
+export function registerDiagnosticsCodeActions(context: FeatureContext) {
   const provider = new CollieIdCodeActionProvider();
 
   context.register(
@@ -416,20 +575,34 @@ function activateIdCodeActions(context: FeatureContext) {
     )
   );
 
-  // Register the rename command
+  context.register(
+    onDidChangeTemplateIndex(() => {
+      invalidateTemplateEntryCache();
+    })
+  );
+
+    // Register the rename command
   context.register(
     commands.registerCommand(
       'collie.renameTemplateId',
       async (document: TextDocument, range: Range, currentId: string) => {
+        const activeLine = range?.start.line ?? window.activeTextEditor?.selection.active.line ?? 0;
+        const target = findNearestIdDirective(document, activeLine);
+        if (!target) {
+          window.showWarningMessage('No #id directive found above the cursor.');
+          return;
+        }
+
+        const initialValue = currentId || target.currentId;
         const newId = await window.showInputBox({
           prompt: 'Enter new template ID',
-          value: `${currentId}2`,
+          value: initialValue ? `${initialValue}2` : '',
           validateInput: (value) => {
-            if (!value || !value.trim()) {
+            if (!value?.trim()) {
               return 'ID cannot be empty';
             }
-            if (/\s/.test(value)) {
-              return 'ID cannot contain whitespace';
+            if (!TEMPLATE_ID_PATTERN.test(value)) {
+              return 'ID must start with a letter and contain only letters, numbers, ".", "_", or "-".';
             }
             return null;
           }
@@ -440,25 +613,7 @@ function activateIdCodeActions(context: FeatureContext) {
         }
 
         const edit = new WorkspaceEdit();
-
-        // Check if there's an explicit ID directive
-        const firstLine = document.lineAt(0);
-        const idDirectiveMatch = /^(#?id)(?:\s+|:\s*|=\s*)(.+)$/i.exec(firstLine.text.trim());
-
-        if (idDirectiveMatch) {
-          // Replace existing ID directive value
-          const valueStart = firstLine.text.indexOf(idDirectiveMatch[2]);
-          const valueRange = new Range(
-            0,
-            valueStart,
-            0,
-            valueStart + idDirectiveMatch[2].length
-          );
-          edit.replace(document.uri, valueRange, newId);
-        } else {
-          // Insert new ID directive at the top
-          edit.insert(document.uri, document.positionAt(0), `#id ${newId}\n\n`);
-        }
+        edit.replace(document.uri, target.range, newId);
 
         await workspace.applyEdit(edit);
       }
@@ -469,7 +624,7 @@ function activateIdCodeActions(context: FeatureContext) {
   context.register(
     commands.registerCommand(
       'collie.openConflictingTemplates',
-      async (uris: Array<{ toString(): string }>) => {
+      async (uris: { toString(): string }[]) => {
         for (const uri of uris) {
           await window.showTextDocument(uri as any, { preview: false });
         }
@@ -477,26 +632,5 @@ function activateIdCodeActions(context: FeatureContext) {
     )
   );
 
-  // Register the open workspace HTML files command
-  context.register(
-    commands.registerCommand(
-      'collie.openWorkspaceHtmlFiles',
-      async () => {
-        const htmlFiles = await workspace.findFiles('**/*.html', '**/node_modules/**', 10);
-
-        if (htmlFiles.length === 0) {
-          window.showInformationMessage('No HTML files found in workspace.');
-          return;
-        }
-
-        for (const uri of htmlFiles) {
-          await window.showTextDocument(uri, { preview: false });
-        }
-      }
-    )
-  );
-
   context.logger.info('Collie ID code actions registered.');
 }
-
-registerFeature(activateIdCodeActions);

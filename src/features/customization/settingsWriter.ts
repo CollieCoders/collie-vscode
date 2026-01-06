@@ -1,4 +1,5 @@
-import { ConfigurationTarget, workspace } from 'vscode';
+import type { ConfigurationTarget} from 'vscode';
+import { workspace } from 'vscode';
 
 export interface TokenCustomizationRule {
   foreground?: string;

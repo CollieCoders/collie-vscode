@@ -1,36 +1,23 @@
-import type { CollieSemanticTokenType } from './legend';
+import type { CollieSemanticToken, TokenizerState } from './types';
+import {
+  classAliasLinePattern,
+  classesKeywordPattern,
+  classShorthandPattern,
+  directivePattern,
+  expressionLinePattern,
+  forLoopPattern,
+  idDirectivePattern,
+  interpolationPattern,
+  pipeTextPattern,
+  propsFieldPattern,
+  propsKeywordPattern,
+  singleBracePattern,
+  tagPattern
+} from './helpers/patterns';
+import { computeCommentSegments, findMatchingParenOutsideStrings } from './helpers/comments';
+import { clipTokenLength, overlaps, pushToken, tokenizeEventHandlerKeysInAttrList } from './helpers/tokens';
 
-export interface CollieSemanticToken {
-  line: number;
-  startCharacter: number;
-  length: number;
-  type: CollieSemanticTokenType;
-}
-
-interface TokenizerState {
-  inBlockComment: boolean;
-  propsIndent: number | null;
-  classesIndent: number | null;
-}
-
-interface Segment {
-  start: number;
-  end: number;
-}
-
-const directivePattern = /^@(if|elseIf|else)\b/g;
-const forLoopPattern = /^@for\s+([A-Za-z_][\w]*)\s+in\s+([A-Za-z_][\w.[\]]*)/g;
-const classShorthandPattern = /\.(?:\$[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][\w-]*)/g;
-const singleBracePattern = /(?<!\{)\{(?!\{).*?(?<!\})\}(?!\})/g;
-const interpolationPattern = /\{\{.*?\}\}/g;
-const idDirectivePattern = /^(\s*)(#?id)(?:\s+|:\s*|=\s*)(.+)$/i;
-const propsKeywordPattern = /^(\s*)(props)\b/;
-const propsFieldPattern = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:/;
-const tagPattern = /^(\s*)([A-Za-z][A-Za-z0-9_$]*)/;
-const pipeTextPattern = /^(\s*)\|/;
-const classesKeywordPattern = /^(\s*)(classes)\b/;
-const classAliasLinePattern = /^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*=/;
-const expressionLinePattern = /^(\s*)(=)\s+/;
+export type { CollieSemanticToken } from './types';
 
 export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[] {
   const tokens: CollieSemanticToken[] = [];
@@ -102,7 +89,7 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
       const indentLength = idDirectiveMatch[1].length;
       const keywordPart = idDirectiveMatch[2];
       const valuePart = idDirectiveMatch[3].trim();
-      
+
       // Tokenize keyword (#id, id, ID, etc.)
       if (!overlaps(commentSegments, indentLength, keywordPart.length)) {
         pushToken(tokens, {
@@ -112,7 +99,7 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
           type: 'collieIdKeyword'
         });
       }
-      
+
       // Find the start of the value (after keyword and separator)
       const fullMatch = idDirectiveMatch[0];
       const valueStartInMatch = fullMatch.indexOf(valuePart);
@@ -178,12 +165,15 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
       if (propsFieldMatch) {
         const start = propsFieldMatch[1].length;
         const fieldName = propsFieldMatch[2];
+        const suffix = propsFieldMatch[3];
+        const isFnProp = suffix === '()';
+        
         if (!overlaps(commentSegments, start, fieldName.length)) {
           pushToken(tokens, {
             line,
             startCharacter: start,
             length: fieldName.length,
-            type: 'colliePropsField'
+            type: isFnProp ? 'colliePropsFieldFn' : 'colliePropsField'
           });
         }
       }
@@ -281,27 +271,76 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
       }
     }
 
-    // Class shorthand occurrences
-    classShorthandPattern.lastIndex = 0;
-    let classMatch: RegExpExecArray | null;
-    while ((classMatch = classShorthandPattern.exec(lineText))) {
-      const start = classMatch.index;
-      const length = classMatch[0].length;
-      if (!overlaps(commentSegments, start, length)) {
-        if (classMatch[0][1] === '$') {
-          pushToken(tokens, {
+    if (!inPropsBlock && !inClassesBlock) {
+      const tagMatch = tagPattern.exec(lineText);
+      tagPattern.lastIndex = 0;
+
+      if (tagMatch) {
+        const tagStart = tagMatch[1].length;        // indentation length
+        const tagName = tagMatch[2];
+        const afterTag = tagStart + tagName.length;
+
+        // Find where the tag head ends:
+        // stop at first whitespace, '(' (attrs), or '|' (inline text marker)
+        let headEnd = lineText.length;
+        for (let i = afterTag; i < lineText.length; i++) {
+          const ch = lineText[i];
+          if (ch === '(' || ch === '|' || ch === ' ' || ch === '\t') {
+            headEnd = i;
+            break;
+          }
+        }
+
+        // Scan only within [afterTag, headEnd)
+        const head = lineText.slice(afterTag, headEnd);
+
+        classShorthandPattern.lastIndex = 0;
+        let classMatch: RegExpExecArray | null;
+
+        while ((classMatch = classShorthandPattern.exec(head))) {
+          const localStart = classMatch.index;
+          const matchText = classMatch[0];
+
+          const absoluteStart = afterTag + localStart;
+          const length = matchText.length;
+
+          if (!overlaps(commentSegments, absoluteStart, length)) {
+            if (matchText[1] === '$') {
+              // ".${alias}" style usage — we currently tokenize "$alias" without the dot
+              pushToken(tokens, {
+                line,
+                startCharacter: absoluteStart + 1,
+                length: length - 1,
+                type: 'collieClassAliasUsage'
+              });
+            } else {
+              pushToken(tokens, {
+                line,
+                startCharacter: absoluteStart,
+                length,
+                type: 'collieClassShorthand'
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Event handler keys: onXxx= inside attribute lists
+    if (!inPropsBlock && !inClassesBlock) {
+      const openParen = lineText.indexOf('(');
+      if (openParen !== -1 && !overlaps(commentSegments, openParen, 1)) {
+        const closeParen = findMatchingParenOutsideStrings(lineText, openParen);
+        if (closeParen !== -1) {
+          // scan between parens (excluding them)
+          tokenizeEventHandlerKeysInAttrList(
+            tokens,
             line,
-            startCharacter: start + 1,
-            length: length - 1,
-            type: 'collieClassAliasUsage'
-          });
-        } else {
-          pushToken(tokens, {
-            line,
-            startCharacter: start,
-            length,
-            type: 'collieClassShorthand'
-          });
+            lineText,
+            openParen + 1,
+            closeParen,
+            commentSegments
+          );
         }
       }
     }
@@ -347,92 +386,4 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
   });
 
   return tokens;
-}
-
-function computeCommentSegments(lineText: string, state: TokenizerState): Segment[] {
-  const segments: Segment[] = [];
-  let cursor = 0;
-
-  while (cursor < lineText.length) {
-    if (state.inBlockComment) {
-      const endIdx = lineText.indexOf('*/', cursor);
-      if (endIdx === -1) {
-        segments.push({ start: cursor, end: lineText.length });
-        cursor = lineText.length;
-        break;
-      } else {
-        const segmentEnd = endIdx + 2;
-        segments.push({ start: cursor, end: segmentEnd });
-        cursor = segmentEnd;
-        state.inBlockComment = false;
-      }
-    } else {
-      const blockStart = lineText.indexOf('/*', cursor);
-      const lineCommentIdx = lineText.indexOf('//', cursor);
-
-      if (lineCommentIdx !== -1 && (blockStart === -1 || lineCommentIdx < blockStart)) {
-        break;
-      }
-
-      if (blockStart === -1) {
-        break;
-      }
-
-      const blockEnd = lineText.indexOf('*/', blockStart + 2);
-      if (blockEnd === -1) {
-        segments.push({ start: blockStart, end: lineText.length });
-        state.inBlockComment = true;
-        cursor = lineText.length;
-        break;
-      } else {
-        const segmentEnd = blockEnd + 2;
-        segments.push({ start: blockStart, end: segmentEnd });
-        cursor = segmentEnd;
-      }
-    }
-  }
-
-  // Line comment (//) outside block comments.
-  const lineCommentIdx = lineText.indexOf('//');
-  if (lineCommentIdx !== -1 && !segments.some(segment => lineCommentIdx >= segment.start && lineCommentIdx < segment.end)) {
-    segments.push({ start: lineCommentIdx, end: lineText.length });
-  }
-
-  segments.sort((a, b) => a.start - b.start);
-  return segments;
-}
-
-function overlaps(segments: Segment[], start: number, length: number): boolean {
-  if (length <= 0) {
-    return true;
-  }
-  const end = start + length;
-  return segments.some(segment => start < segment.end && end > segment.start);
-}
-
-function clipTokenLength(segments: Segment[], start: number, length: number): number {
-  if (length <= 0) {
-    return 0;
-  }
-  const end = start + length;
-  for (const segment of segments) {
-    if (segment.end <= start) {
-      continue;
-    }
-    if (segment.start <= start) {
-      return 0;
-    }
-    if (segment.start < end) {
-      return Math.max(0, segment.start - start);
-    }
-    break;
-  }
-  return length;
-}
-
-function pushToken(tokens: CollieSemanticToken[], token: CollieSemanticToken) {
-  if (token.length <= 0) {
-    return;
-  }
-  tokens.push(token);
 }

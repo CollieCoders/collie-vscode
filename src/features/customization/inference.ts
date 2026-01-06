@@ -66,7 +66,7 @@ function inferTokenTypeFromDocument(document: TextDocument, position: Position):
 
 export function inferTokenTypeFromContext(): CollieSemanticTokenType | undefined {
   const editor = window.activeTextEditor;
-  if (!editor || editor.document.languageId !== 'collie') {
+  if (editor?.document.languageId !== 'collie') {
     return undefined;
   }
 

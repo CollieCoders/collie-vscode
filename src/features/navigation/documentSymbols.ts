@@ -1,10 +1,11 @@
 import { basename } from 'path';
-import { DocumentSymbol, languages, Range, SymbolKind, TextDocument } from 'vscode';
-import type { FeatureContext } from '..';
-import { registerFeature } from '..';
+import type { TextDocument } from 'vscode';
+import { DocumentSymbol, languages, Range, SymbolKind } from 'vscode';
+import type { FeatureContext } from '../types';
 import type { ElementNode, Node, ConditionalNode, ConditionalBranch, ForLoopNode, PropsDecl } from '../../format/parser/ast';
 import type { SourceSpan } from '../../format/parser/diagnostics';
 import { getParsedDocument } from '../../lang/cache';
+import { listByFile } from '../../lang/templateIndex';
 import { isFeatureFlagEnabled } from '../featureFlags';
 
 function spanToRange(document: TextDocument, span?: SourceSpan): Range {
@@ -118,11 +119,25 @@ function buildNodeSymbol(document: TextDocument, node: Node): DocumentSymbol | n
   }
 }
 
-function buildDocumentSymbols(document: TextDocument): DocumentSymbol[] {
-  const parsed = getParsedDocument(document);
+function spanWithinRange(document: TextDocument, span: SourceSpan | undefined, range: Range): boolean {
+  if (!span) {
+    return false;
+  }
+  const spanStart = span.start.offset;
+  const spanEnd = span.end.offset;
+  const rangeStart = document.offsetAt(range.start);
+  const rangeEnd = document.offsetAt(range.end);
+  return spanStart >= rangeStart && spanEnd <= rangeEnd;
+}
+
+function buildTemplateChildren(
+  document: TextDocument,
+  parsed: ReturnType<typeof getParsedDocument>,
+  range: Range
+): DocumentSymbol[] {
   const children: DocumentSymbol[] = [];
 
-  if (parsed.ast.props) {
+  if (parsed.ast.props && spanWithinRange(document, parsed.ast.props.span, range)) {
     const propsSymbol = buildPropsSymbol(document, parsed.ast.props);
     if (propsSymbol) {
       children.push(propsSymbol);
@@ -130,16 +145,60 @@ function buildDocumentSymbols(document: TextDocument): DocumentSymbol[] {
   }
 
   for (const child of parsed.ast.children) {
+    if (!spanWithinRange(document, child.span, range)) {
+      continue;
+    }
     const symbol = buildNodeSymbol(document, child);
     if (symbol) {
       children.push(symbol);
     }
   }
 
-  return createDocumentRootSymbol(document, children);
+  return children;
 }
 
-function activateDocumentSymbolsFeature(context: FeatureContext) {
+function buildDocumentSymbols(document: TextDocument): DocumentSymbol[] {
+  const parsed = getParsedDocument(document);
+  const templates = listByFile(document.uri);
+
+  if (templates.length === 0) {
+    const children: DocumentSymbol[] = [];
+
+    if (parsed.ast.props) {
+      const propsSymbol = buildPropsSymbol(document, parsed.ast.props);
+      if (propsSymbol) {
+        children.push(propsSymbol);
+      }
+    }
+
+    for (const child of parsed.ast.children) {
+      const symbol = buildNodeSymbol(document, child);
+      if (symbol) {
+        children.push(symbol);
+      }
+    }
+
+    return createDocumentRootSymbol(document, children);
+  }
+
+  const symbols: DocumentSymbol[] = [];
+
+  for (const template of templates) {
+    const symbol = new DocumentSymbol(
+      template.id,
+      'Template block',
+      SymbolKind.Function,
+      template.blockRange,
+      template.idRange
+    );
+    symbol.children = buildTemplateChildren(document, parsed, template.blockRange);
+    symbols.push(symbol);
+  }
+
+  return symbols;
+}
+
+export function registerDocumentSymbols(context: FeatureContext) {
   const provider = languages.registerDocumentSymbolProvider({ language: 'collie' }, {
     provideDocumentSymbols(document) {
       if (!isFeatureFlagEnabled('navigation')) {
@@ -158,5 +217,3 @@ function activateDocumentSymbolsFeature(context: FeatureContext) {
   context.register(provider);
   context.logger.info('Collie document symbols provider registered.');
 }
-
-registerFeature(activateDocumentSymbolsFeature);

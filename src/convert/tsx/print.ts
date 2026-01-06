@@ -31,7 +31,7 @@ export function printJsxNodes(nodes: readonly IrNode[], options: JsxPrintOptions
     printNodeList(nodes, 0, ctx, output);
   }
 
-  return output.join('\n') + '\n';
+  return `${output.join('\n')  }\n`;
 }
 
 function shouldWrapWithFragment(nodes: readonly IrNode[]): boolean {
@@ -108,7 +108,7 @@ function formatElementProps(node: IrElement): string {
     return '';
   }
 
-  return ' ' + attributes.join(' ');
+  return ` ${  attributes.join(' ')}`;
 }
 
 function printFragment(node: IrFragment, level: number, ctx: JsxPrinterContext, out: string[]) {

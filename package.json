@@ -2,7 +2,7 @@
   "name": "collie-vscode",
   "displayName": "Collie",
   "description": "VS Code language support for Collie templates",
-  "version": "0.6.7",
+  "version": "1.2.3",
   "publisher": "collie",
   "license": "MIT",
   "repository": "https://github.com/collie-lang/collie-vscode",
@@ -17,9 +17,21 @@
   "scripts": {
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
+    "vscode:prepublish": "npm run build",
     "package": "vsce package",
-    "lint": "tsc --noEmit"
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "type-check": "tsc --noEmit",
+    "file-tree": "tree -l 20 -o file-tree.txt --ignore='node_modules/'"
   },
+  "activationEvents": [
+    "onCommand:collie.convertToCollie",
+    "onCommand:collie.convertTsxSelectionToCollie",
+    "onCommand:collie.copyAsJsx",
+    "onCommand:collie.copyAsTsx",
+    "onCommand:collie.convertToTsxClipboard",
+    "onLanguage:collie"
+  ],
   "contributes": {
     "languages": [
       {
@@ -174,6 +186,7 @@
       {
         "command": "collie.convertTsxSelectionToCollie",
         "title": "Collie: Convert JSX/TSX Selection to Collie",
+        "description": "Convert the selected JSX/TSX into a #id template block and insert <Collie id=\"...\"> (ensures import from @collie-lang/react).",
         "category": "Collie"
       },
       {
@@ -191,7 +204,7 @@
       {
         "command": "collie.convertToCollie",
         "title": "Convert to Collie",
-        "description": "Convert the selected JSX/TSX into a new `.collie` file.",
+        "description": "Convert the selected JSX/TSX into a #id template block and insert <Collie id=\"...\"> (ensures import from @collie-lang/react).",
         "category": "Collie"
       },
       {
@@ -257,34 +270,67 @@
       ]
     },
     "configurationDefaults": {
-      "[collie]": {
-        "editor.semanticHighlighting.enabled": true,
-        "editor.semanticTokenColorCustomizations": {
-          "rules": {
-            "collieTag": "#569CD6",
-            "collieClassShorthand": "#4EC9B0",
-            "collieDirective": "#C586C0",
-            "colliePropsKeyword": "#D7BA7D",
-            "colliePropsField": "#9CDCFE",
-            "collieInterpolation": "#CE9178",
-            "colliePipeText": "#D4D4D4",
-            "collieComment": "#6A9955",
-            "collieClassesKeyword": "#D7BA7D",
-            "collieClassAliasName": "#4FC1FF",
-            "collieClassAliasUsage": "#4EC9B0",
-            "collieIdKeyword": "#C586C0",
-            "collieIdValue": "#DCDCAA"
+      "editor.semanticHighlighting.enabled": true,
+      "editor.semanticTokenColorCustomizations": {
+        "enabled": true,
+        "rules": {
+          "collieTag": {
+            "foreground": "#61AFEF"
+          },
+          "collieClassShorthand": {
+            "foreground": "#56B6C2"
+          },
+          "collieDirective": {
+            "foreground": "#C678DD"
+          },
+          "colliePropsKeyword": {
+            "foreground": "#C678DD"
+          },
+          "colliePropsField": {
+            "foreground": "#d59750"
+          },
+          "collieInterpolation": {
+            "foreground": "#e5d77b",
+            "fontStyle": "bold"
+          },
+          "colliePipeText": {
+            "foreground": "#D4D4D4"
+          },
+          "collieComment": {
+            "foreground": "#5C6370",
+            "fontStyle": "italic"
+          },
+          "collieClassesKeyword": {
+            "foreground": "#C678DD"
+          },
+          "collieClassAliasName": {
+            "foreground": "#E06C75"
+          },
+          "collieClassAliasUsage": {
+            "foreground": "#56B6C2"
+          },
+          "collieIdKeyword": {
+            "foreground": "#C678DD"
+          },
+          "collieIdValue": {
+            "foreground": "#E06C75",
+            "fontStyle": "bold"
           }
         }
       }
     }
   },
   "devDependencies": {
+    "@eslint/js": "^9.18.0",
     "@types/node": "^25.0.3",
     "@types/vscode": "^1.87.0",
+    "@typescript-eslint/eslint-plugin": "^8.19.1",
+    "@typescript-eslint/parser": "^8.19.1",
     "@vscode/vsce": "^3.1.1",
     "esbuild": "^0.24.0",
-    "typescript": "^5.6.3"
+    "eslint": "^9.18.0",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.19.1"
   },
   "packageManager": "pnpm@10.26.2+sha512.0e308ff2005fc7410366f154f625f6631ab2b16b1d2e70238444dd6ae9d630a8482d92a451144debc492416896ed16f7b114a86ec68b8404b2443869e68ffda6"
 }

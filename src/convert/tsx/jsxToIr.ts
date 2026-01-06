@@ -1,6 +1,8 @@
 import * as ts from 'typescript';
 import {
   createIrElement,
+  createIrConditional,
+  createIrConditionalBranch,
   createIrExpression,
   createIrFragment,
   createIrProp,
@@ -65,7 +67,8 @@ function convertJsxChild(
     return createIrText(text);
   }
 
-  diagnostics.warnings.push(`Unsupported JSX node omitted: ${ts.SyntaxKind[node.kind]}`);
+  const nodeKind = (node as ts.Node).kind;
+  diagnostics.warnings.push(`Unsupported JSX node omitted: ${ts.SyntaxKind[nodeKind]}`);
   return createPlaceholderExpression('Unsupported JSX node', node, sourceFile);
 }
 
@@ -138,6 +141,11 @@ function convertJsxExpression(
     return undefined;
   }
 
+  const conditional = convertConditionalExpression(expression, sourceFile, diagnostics);
+  if (conditional) {
+    return conditional;
+  }
+
   if (containsJsx(expression)) {
     diagnostics.warnings.push(
       `Converted complex JSX expression to placeholder: ${summarizeNodeText(expression, sourceFile)}`
@@ -146,6 +154,109 @@ function convertJsxExpression(
   }
 
   return createIrExpression(expression.getText(sourceFile));
+}
+
+function convertConditionalExpression(
+  expression: ts.Expression,
+  sourceFile: ts.SourceFile,
+  diagnostics: JsxConversionDiagnostics
+) {
+  const unwrapped = unwrapParentheses(expression);
+
+  if (ts.isConditionalExpression(unwrapped)) {
+    const branches = collectConditionalBranches(unwrapped, sourceFile, diagnostics);
+    if (!branches) {
+      return undefined;
+    }
+    return createIrConditional(branches);
+  }
+
+  if (
+    ts.isBinaryExpression(unwrapped) &&
+    unwrapped.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+  ) {
+    if (!containsJsx(unwrapped.right)) {
+      return undefined;
+    }
+    const children = convertConditionalBranchExpression(unwrapped.right, sourceFile, diagnostics);
+    return createIrConditional([createIrConditionalBranch(unwrapped.left.getText(sourceFile), children)]);
+  }
+
+  return undefined;
+}
+
+function collectConditionalBranches(
+  expression: ts.ConditionalExpression,
+  sourceFile: ts.SourceFile,
+  diagnostics: JsxConversionDiagnostics
+) {
+  const branches: { test?: string; children: IrNode[] }[] = [];
+  let current: ts.Expression = expression;
+  let hasJsx = false;
+
+  while (ts.isConditionalExpression(current)) {
+    const test = current.condition.getText(sourceFile);
+    const children = convertConditionalBranchExpression(current.whenTrue, sourceFile, diagnostics);
+    if (containsJsx(current.whenTrue)) {
+      hasJsx = true;
+    }
+    branches.push({ test, children });
+    current = unwrapParentheses(current.whenFalse);
+  }
+
+  const fallbackChildren = convertConditionalBranchExpression(current, sourceFile, diagnostics);
+  if (containsJsx(current)) {
+    hasJsx = true;
+  }
+  branches.push({ children: fallbackChildren });
+
+  if (!hasJsx) {
+    return undefined;
+  }
+
+  return branches.map(branch =>
+    createIrConditionalBranch(branch.test, branch.children)
+  );
+}
+
+function convertConditionalBranchExpression(
+  expression: ts.Expression,
+  sourceFile: ts.SourceFile,
+  diagnostics: JsxConversionDiagnostics
+): IrNode[] {
+  const unwrapped = unwrapParentheses(expression);
+
+  if (
+    unwrapped.kind === ts.SyntaxKind.NullKeyword ||
+    unwrapped.kind === ts.SyntaxKind.UndefinedKeyword ||
+    unwrapped.kind === ts.SyntaxKind.FalseKeyword
+  ) {
+    return [];
+  }
+
+  if (ts.isJsxElement(unwrapped)) {
+    const converted = convertJsxElement(unwrapped, sourceFile, diagnostics);
+    return converted ? [converted] : [];
+  }
+
+  if (ts.isJsxSelfClosingElement(unwrapped)) {
+    const converted = convertJsxSelfClosingElement(unwrapped, sourceFile, diagnostics);
+    return converted ? [converted] : [];
+  }
+
+  if (ts.isJsxFragment(unwrapped)) {
+    const converted = convertJsxFragment(unwrapped, sourceFile, diagnostics);
+    return converted ? [converted] : [];
+  }
+
+  if (containsJsx(unwrapped)) {
+    diagnostics.warnings.push(
+      `Converted complex JSX branch to placeholder: ${summarizeNodeText(unwrapped, sourceFile)}`
+    );
+    return [createIrExpression(buildPlaceholderText('conditional branch', unwrapped, sourceFile))];
+  }
+
+  return [createIrExpression(unwrapped.getText(sourceFile))];
 }
 
 function convertJsxAttributes(
@@ -176,7 +287,8 @@ function convertJsxAttributes(
       continue;
     }
 
-    diagnostics.warnings.push(`Unsupported JSX attribute omitted: ${ts.SyntaxKind[attribute.kind]}`);
+    const attributeKind = (attribute as ts.Node).kind;
+    diagnostics.warnings.push(`Unsupported JSX attribute omitted: ${ts.SyntaxKind[attributeKind]}`);
     props.push(createPlaceholderExpression('unsupported JSX attribute', attribute, sourceFile));
   }
 
@@ -237,6 +349,14 @@ function containsJsx(node: ts.Node): boolean {
 
   visit(node);
   return found;
+}
+
+function unwrapParentheses(expression: ts.Expression): ts.Expression {
+  let current = expression;
+  while (ts.isParenthesizedExpression(current)) {
+    current = current.expression;
+  }
+  return current;
 }
 
 const PLACEHOLDER_PREFIX = '/* Collie TODO: ';

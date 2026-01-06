@@ -1,13 +1,15 @@
+import type {
+  Uri} from 'vscode';
 import {
   Position,
   Range,
   RelativePattern,
-  Uri,
   workspace,
   type WorkspaceFolder
 } from 'vscode';
 import * as path from 'path';
 import type { Logger } from '../../logger';
+import { getTextPreferOpenDoc } from '../diagnostics/helpers/textHelpers';
 
 export interface CssClassDefinition {
   uri: Uri;
@@ -63,8 +65,8 @@ function positionAt(offset: number, lineOffsets: number[]): Position {
   return new Position(line, offset - lineOffsets[line]);
 }
 
-function extractClassTokens(text: string): Array<{ name: string; start: number; length: number }> {
-  const matches: Array<{ name: string; start: number; length: number }> = [];
+function extractClassTokens(text: string): { name: string; start: number; length: number }[] {
+  const matches: { name: string; start: number; length: number }[] = [];
   CLASS_TOKEN_PATTERN.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = CLASS_TOKEN_PATTERN.exec(text)) !== null) {
@@ -77,10 +79,10 @@ function extractClassTokens(text: string): Array<{ name: string; start: number; 
   return matches;
 }
 
-type IndexResult = {
+interface IndexResult {
   indexed: boolean;
   limitReached: boolean;
-};
+}
 
 export class CssClassIndex {
   private readonly classDefinitions = new Map<string, CssClassDefinition[]>();
@@ -198,8 +200,9 @@ export class CssClassIndex {
 
     let text = '';
     try {
-      const contents = await workspace.fs.readFile(uri);
-      text = Buffer.from(contents).toString('utf8');
+      // diagnostic-upgrade: Prefer open document buffers over disk reads
+      // This allows CSS class diagnostics to update based on unsaved edits
+      text = await getTextPreferOpenDoc(uri);
     } catch (error) {
       this.logger.warn(`Failed to read CSS file: ${uri.fsPath}`, error);
       return { indexed: false, limitReached: false };

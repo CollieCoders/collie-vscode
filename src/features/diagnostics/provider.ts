@@ -2,53 +2,53 @@ import {
   Diagnostic as VSDiagnostic,
   DiagnosticSeverity,
   languages,
-  Position,
   Range,
-  workspace,
-  Uri
+  workspace
 } from 'vscode';
 import type { TextDocument } from 'vscode';
-import type { FeatureContext } from '..';
-import { registerFeature } from '..';
-import { getParsedDocument, invalidateParsedDocument, getTemplateIdEntries } from '../../lang/cache';
-import { hasHtmlPlaceholder, onHtmlAnchorsChanged } from '../../lang/htmlAnchorIndex';
+import type { FeatureContext } from '../types';
+import { getParsedDocument, invalidateParsedDocument } from '../../lang/cache';
+import { listByFile, onDidChangeTemplateIndex, type TemplateLocation } from '../../lang/templateIndex';
 import type { ParsedDocument } from '../../lang';
 import type { Diagnostic as ParserDiagnostic, SourceSpan } from '../../format/parser/diagnostics';
 import { isFeatureFlagEnabled, onDidChangeFeatureFlags } from '../featureFlags';
-import * as path from 'path';
 import { collectCompilerDiagnostics } from './compilerDiagnostics';
 import { onDidChangeCollieConfig, resolveCollieConfigForDocument } from '../../config/collieConfig';
 import { getCssClassIndexForDocument, getUnknownClassOverrideSetting } from '../css/indexer';
 import type { Node } from '../../format/parser/ast';
+import { spanToRange } from './helpers/ranges';
+import { SUPPORTED_DIRECTIVES, DIALECT_DIRECTIVE_ALIASES, parseIgnoreDirectives } from './helpers/directives';
+import { invalidateTemplateEntryCache, getTemplateEntriesById } from './helpers/cache';
+import {
+  invalidateTemplateUsageCache,
+  isTemplateUsageDocument,
+  getReferencedTemplateIds
+} from './helpers/templateUsage';
 
-const SUPPORTED_DIRECTIVES = new Set(['@if', '@elseIf', '@else', '@for']);
-const DIALECT_DIRECTIVE_ALIASES = new Set(['@elseif', '@else-if']);
 const DIAGNOSTIC_DEBOUNCE_MS = 200;
-const ID_DIRECTIVE_PATTERN = /^(?:#|)id(?:\s+|:\s*|=\s*)(.+)$/i;
-const PASCAL_CASE_PATTERN = /^[A-Z][A-Za-z0-9]*$/;
+const REFRESH_DEBOUNCE_MS = 250;
+const REFRESH_OPEN_DOCS_KEY = '__collie_refresh_open_docs__';
 const pendingDiagnostics = new Map<string, ReturnType<typeof setTimeout>>();
+// diagnostic-upgrade: Track validation run versions to prevent stale results
+const validationRunVersions = new Map<string, number>();
 
 function shouldHandleDocument(document: TextDocument): boolean {
   return document.languageId === 'collie';
 }
 
-function spanToRange(document: TextDocument, span?: SourceSpan): Range {
-  if (!span) {
-    return new Range(0, 0, 0, 0);
+// diagnostic-upgrade: Check if file changes should trigger Collie doc revalidation
+function isRelevantForCrossFileRevalidation(document: TextDocument): boolean {
+  const lang = document.languageId;
+  // TSX/TS/JS files affect props/template diagnostics
+  if (lang === 'typescriptreact' || lang === 'typescript' || 
+      lang === 'javascriptreact' || lang === 'javascript') {
+    return true;
   }
-  const start = spanPositionToVs(document, span.start);
-  const end = spanPositionToVs(document, span.end);
-  return new Range(start, end);
-}
-
-function spanPositionToVs(document: TextDocument, pos: SourceSpan['start']): Position {
-  const lineIndex = Math.min(
-    Math.max(pos.line - 1, 0),
-    Math.max(document.lineCount - 1, 0)
-  );
-  const lineText = document.lineAt(lineIndex).text;
-  const character = Math.min(Math.max(pos.col - 1, 0), lineText.length);
-  return new Position(lineIndex, character);
+  // CSS files affect class diagnostics
+  if (lang === 'css' || lang === 'scss' || lang === 'less') {
+    return true;
+  }
+  return false;
 }
 
 function convertParserDiagnostic(document: TextDocument, diagnostic: ParserDiagnostic): VSDiagnostic {
@@ -76,63 +76,6 @@ function collectParserDiagnostics(document: TextDocument, parsed: ParsedDocument
   return parsed.diagnostics.map(diag => convertParserDiagnostic(document, diag));
 }
 
-function collectPascalCaseIdDiagnostics(document: TextDocument, parsed: ParsedDocument): VSDiagnostic[] {
-  const rawId = parsed.ast.rawId?.trim();
-  if (!rawId || !parsed.ast.idSpan) {
-    return [];
-  }
-
-  const normalized = rawId.endsWith('-collie') ? rawId.slice(0, -7) : rawId;
-  if (PASCAL_CASE_PATTERN.test(normalized)) {
-    return [];
-  }
-
-  const range = getIdValueRange(document, parsed.ast.idSpan, rawId);
-  const replacementText = toPascalCase(normalized);
-  const diagnostic = new VSDiagnostic(
-    range,
-    'Collie template id must be PascalCase.',
-    DiagnosticSeverity.Error
-  );
-  diagnostic.code = 'COLLIE410';
-  diagnostic.source = 'collie';
-  diagnostic.data = {
-    kind: 'pascalCaseId',
-    fix: {
-      range,
-      replacementText
-    }
-  };
-  return [diagnostic];
-}
-
-function getIdValueRange(document: TextDocument, span: SourceSpan, rawId: string): Range {
-  const lineIndex = Math.max(0, span.start.line - 1);
-  const lineText = document.lineAt(lineIndex).text;
-  const match = ID_DIRECTIVE_PATTERN.exec(lineText);
-  if (!match || match.index === undefined) {
-    return spanToRange(document, span);
-  }
-
-  const valueText = match[1];
-  const valueIndex = match[0].lastIndexOf(valueText);
-  if (valueIndex === -1) {
-    return spanToRange(document, span);
-  }
-
-  const start = match.index + valueIndex;
-  return new Range(lineIndex, start, lineIndex, start + rawId.length);
-}
-
-function toPascalCase(value: string): string {
-  const tokens = value.split(/[^A-Za-z0-9]+/).filter(Boolean);
-  const combined = tokens.map(token => token[0].toUpperCase() + token.slice(1)).join('');
-  if (!combined) {
-    return 'CollieId';
-  }
-  return /^[A-Za-z_]/.test(combined) ? combined : `Collie${combined}`;
-}
-
 function collectDuplicatePropDiagnostics(document: TextDocument): VSDiagnostic[] {
   const diagnostics: VSDiagnostic[] = [];
   let inPropsBlock = false;
@@ -149,7 +92,7 @@ function collectDuplicatePropDiagnostics(document: TextDocument): VSDiagnostic[]
     const indent = line.firstNonWhitespaceCharacterIndex;
 
     if (!inPropsBlock) {
-      if (trimmed === 'props') {
+      if (trimmed === '#props') {
         inPropsBlock = true;
         propsIndent = indent;
       }
@@ -157,7 +100,7 @@ function collectDuplicatePropDiagnostics(document: TextDocument): VSDiagnostic[]
     }
 
     if (indent <= propsIndent) {
-      inPropsBlock = trimmed === 'props';
+      inPropsBlock = trimmed === '#props';
       if (inPropsBlock) {
         propsIndent = indent;
       }
@@ -212,110 +155,66 @@ function collectUnknownDirectiveDiagnostics(document: TextDocument): VSDiagnosti
   return diagnostics;
 }
 
-function collectIdCollisionDiagnostics(document: TextDocument, parsed: ParsedDocument): VSDiagnostic[] {
+function formatTemplateLocation(entry: TemplateLocation): string {
+  const relativePath = workspace.asRelativePath(entry.uri);
+  const line = entry.idRange.start.line + 1;
+  return `${relativePath}:${line}`;
+}
+
+async function collectIdCollisionDiagnostics(document: TextDocument): Promise<VSDiagnostic[]> {
   const diagnostics: VSDiagnostic[] = [];
+  const entriesById = await getTemplateEntriesById();
+  const entriesInFile = listByFile(document.uri);
   const currentUri = document.uri.toString();
-  
-  // Determine this document's template ID
-  let templateId: string;
-  let idSpan: SourceSpan | undefined;
-  let isExplicit: boolean;
-  
-  if (parsed.ast.id) {
-    templateId = parsed.ast.id;
-    idSpan = parsed.ast.idSpan;
-    isExplicit = true;
-  } else {
-    const basename = path.basename(document.uri.fsPath, '.collie');
-    let normalized = basename;
-    if (normalized.endsWith('-collie')) {
-      normalized = normalized.slice(0, -7);
+
+  for (const entry of entriesInFile) {
+    const entries = entriesById.get(entry.id) ?? [];
+    if (entries.length <= 1) {
+      continue;
     }
-    templateId = normalized;
-    isExplicit = false;
-  }
-  
-  // Get all entries with this ID
-  const entries = getTemplateIdEntries(templateId);
-  
-  // If there are multiple entries with the same ID, we have a collision
-  if (entries.length > 1) {
-    // Find the other files (not this one)
-    const others = entries.filter(entry => entry.uri.toString() !== currentUri);
-    
-    if (others.length > 0) {
-      let range: Range;
-      
-      if (isExplicit && idSpan) {
-        // Use the ID directive span
-        range = spanToRange(document, idSpan);
-      } else {
-        // Use filename span (first line, or a reasonable placeholder)
-        range = new Range(0, 0, 0, templateId.length);
-      }
-      
-      // Build the diagnostic message
-      const othersList = others.map(entry => {
-        const relativePath = workspace.asRelativePath(entry.uri);
-        const type = entry.derivedFromFilename ? 'implicit' : 'explicit';
-        return `- ${relativePath} (${type})`;
-      }).join('\n');
-      
-      const message = `Duplicate Collie template id "${templateId}".\nAlso defined in:\n${othersList}`;
-      
-      const diagnostic = new VSDiagnostic(range, message, DiagnosticSeverity.Error);
-      diagnostic.code = 'COLLIE403';
-      diagnostic.source = 'collie';
-      diagnostics.push(diagnostic);
+
+    const others = entries.filter(other => other.uri.toString() !== currentUri);
+    if (others.length === 0) {
+      continue;
     }
+
+    const othersList = others.map(other => `- ${formatTemplateLocation(other)}`).join('\n');
+    const message = `Duplicate Collie template id "${entry.id}".\nAlso defined in:\n${othersList}`;
+    const diagnostic = new VSDiagnostic(entry.idRange, message, DiagnosticSeverity.Error);
+    diagnostic.code = 'COLLIE403';
+    diagnostic.source = 'collie';
+    diagnostics.push(diagnostic);
   }
-  
+
   return diagnostics;
 }
 
-function collectMissingHtmlPlaceholderDiagnostics(document: TextDocument, parsed: ParsedDocument): VSDiagnostic[] {
+async function collectUnreferencedTemplateDiagnostics(document: TextDocument): Promise<VSDiagnostic[]> {
   const diagnostics: VSDiagnostic[] = [];
-  
-  // Determine this document's template ID
-  let templateId: string;
-  let idSpan: SourceSpan | undefined;
-  let isExplicit: boolean;
-  
-  if (parsed.ast.id) {
-    templateId = parsed.ast.id;
-    idSpan = parsed.ast.idSpan;
-    isExplicit = true;
-  } else {
-    const basename = path.basename(document.uri.fsPath, '.collie');
-    let normalized = basename;
-    if (normalized.endsWith('-collie')) {
-      normalized = normalized.slice(0, -7);
-    }
-    templateId = normalized;
-    isExplicit = false;
+  const entriesInFile = listByFile(document.uri);
+  if (entriesInFile.length === 0) {
+    return diagnostics;
   }
-  
-  // Check if there's a matching HTML placeholder
-  if (!hasHtmlPlaceholder(templateId)) {
-    let range: Range;
-    
-    if (isExplicit && idSpan) {
-      // Use the ID directive span
-      range = spanToRange(document, idSpan);
-    } else {
-      // Use filename span (first line)
-      range = new Range(0, 0, 0, Math.max(templateId.length, 1));
+
+  const referenced = await getReferencedTemplateIds();
+
+  for (const entry of entriesInFile) {
+    if (!entry.isValidId) {
+      continue;
     }
-    
-    const message = `Template id "${templateId}" has no matching HTML placeholder. ` +
-      `Add id="${templateId}-collie" to your HTML to render this template.`;
-    
-    const diagnostic = new VSDiagnostic(range, message, DiagnosticSeverity.Warning);
+    if (referenced.has(entry.id)) {
+      continue;
+    }
+    const diagnostic = new VSDiagnostic(
+      entry.idRange,
+      `Template id "${entry.id}" is not referenced by a Collie mount or HTML placeholder.`,
+      DiagnosticSeverity.Warning
+    );
     diagnostic.code = 'COLLIE404';
     diagnostic.source = 'collie';
     diagnostics.push(diagnostic);
   }
-  
+
   return diagnostics;
 }
 
@@ -457,6 +356,35 @@ function createDiagnostic(range: Range, message: string, code: string): VSDiagno
   return diagnostic;
 }
 
+function applyDiagnosticSuppression(document: TextDocument, diagnostics: VSDiagnostic[]): VSDiagnostic[] {
+  const ignoreDirectives = parseIgnoreDirectives(document.getText());
+  const filtered: VSDiagnostic[] = [];
+
+  for (const diagnostic of diagnostics) {
+    const code = diagnostic.code;
+    if (typeof code !== 'string') {
+      filtered.push(diagnostic);
+      continue;
+    }
+
+    // Check file-level suppression
+    if (ignoreDirectives.fileLevelCodes.has(code)) {
+      continue;
+    }
+
+    // Check line-level suppression
+    const diagnosticLine = diagnostic.range.start.line;
+    const lineCodes = ignoreDirectives.lineLevelCodes.get(diagnosticLine);
+    if (lineCodes?.has(code)) {
+      continue;
+    }
+
+    filtered.push(diagnostic);
+  }
+
+  return filtered;
+}
+
 async function applyDiagnostics(
   document: TextDocument,
   collection: ReturnType<typeof languages.createDiagnosticCollection>,
@@ -471,6 +399,11 @@ async function applyDiagnostics(
     return;
   }
 
+  // diagnostic-upgrade: Capture current run version to detect stale results
+  const docKey = document.uri.toString();
+  const currentVersion = (validationRunVersions.get(docKey) ?? 0) + 1;
+  validationRunVersions.set(docKey, currentVersion);
+
   let parsed: ParsedDocument | null = null;
   try {
     parsed = getParsedDocument(document);
@@ -483,9 +416,8 @@ async function applyDiagnostics(
 
   if (parsed) {
     diagnostics.push(...collectParserDiagnostics(document, parsed));
-    diagnostics.push(...collectPascalCaseIdDiagnostics(document, parsed));
-    diagnostics.push(...collectIdCollisionDiagnostics(document, parsed));
-    diagnostics.push(...collectMissingHtmlPlaceholderDiagnostics(document, parsed));
+    diagnostics.push(...await collectIdCollisionDiagnostics(document));
+    diagnostics.push(...await collectUnreferencedTemplateDiagnostics(document));
   }
 
   diagnostics.push(...collectUnknownDirectiveDiagnostics(document));
@@ -493,7 +425,13 @@ async function applyDiagnostics(
   diagnostics.push(...collectCompilerDiagnostics(document, parsed, config));
   diagnostics.push(...collectUnknownClassDiagnostics(document, parsed, config));
 
-  collection.set(document.uri, diagnostics);
+  // Apply diagnostic suppression based on ignore directives
+  const suppressedDiagnostics = applyDiagnosticSuppression(document, diagnostics);
+
+  // diagnostic-upgrade: Only publish if this is still the latest run
+  if (validationRunVersions.get(docKey) === currentVersion) {
+    collection.set(document.uri, suppressedDiagnostics);
+  }
 }
 
 function scheduleDiagnostics(
@@ -502,18 +440,12 @@ function scheduleDiagnostics(
   context: FeatureContext
 ) {
   const key = document.uri.toString();
-  const existing = pendingDiagnostics.get(key);
-  if (existing) {
-    clearTimeout(existing);
-  }
-  const handle = setTimeout(() => {
-    pendingDiagnostics.delete(key);
+  scheduleDebounced(key, () => {
     void applyDiagnostics(document, collection, context);
     // After updating this document, refresh all other collie documents
     // to update their ID collision diagnostics
     refreshOtherCollieDocuments(document, collection, context);
   }, DIAGNOSTIC_DEBOUNCE_MS);
-  pendingDiagnostics.set(key, handle);
 }
 
 function refreshOtherCollieDocuments(
@@ -530,7 +462,22 @@ function refreshOtherCollieDocuments(
 }
 
 function clearPendingDiagnostics(document: TextDocument) {
-  const key = document.uri.toString();
+  cancelDebounced(document.uri.toString());
+}
+
+function scheduleDebounced(key: string, action: () => void, delayMs: number): void {
+  const existing = pendingDiagnostics.get(key);
+  if (existing) {
+    clearTimeout(existing);
+  }
+  const handle = setTimeout(() => {
+    pendingDiagnostics.delete(key);
+    action();
+  }, delayMs);
+  pendingDiagnostics.set(key, handle);
+}
+
+function cancelDebounced(key: string): void {
   const handle = pendingDiagnostics.get(key);
   if (handle) {
     clearTimeout(handle);
@@ -547,7 +494,23 @@ function refreshOpenDocuments(
   }
 }
 
-function activateDiagnosticsProvider(context: FeatureContext) {
+function scheduleOpenDocumentsRefresh(
+  collection: ReturnType<typeof languages.createDiagnosticCollection>,
+  context: FeatureContext
+) {
+  if (!isFeatureFlagEnabled('diagnostics')) {
+    cancelDebounced(REFRESH_OPEN_DOCS_KEY);
+    return;
+  }
+
+  scheduleDebounced(REFRESH_OPEN_DOCS_KEY, () => {
+    if (isFeatureFlagEnabled('diagnostics')) {
+      refreshOpenDocuments(collection, context);
+    }
+  }, REFRESH_DEBOUNCE_MS);
+}
+
+export function registerDiagnosticsProvider(context: FeatureContext) {
   const collection = languages.createDiagnosticCollection('collie');
   context.register(collection);
 
@@ -563,13 +526,32 @@ function activateDiagnosticsProvider(context: FeatureContext) {
 
   context.register(
     workspace.onDidChangeTextDocument(event => {
-      scheduleDiagnostics(event.document, collection, context);
+      // diagnostic-upgrade: Revalidate Collie docs when relevant files change (not just on save)
+      if (shouldHandleDocument(event.document)) {
+        scheduleDiagnostics(event.document, collection, context);
+        if (isTemplateUsageDocument(event.document)) {
+          invalidateTemplateUsageCache();
+          scheduleOpenDocumentsRefresh(collection, context);
+        }
+      } else if (isRelevantForCrossFileRevalidation(event.document)) {
+        // When TSX/TS/CSS files change, revalidate all open Collie documents
+        scheduleOpenDocumentsRefresh(collection, context);
+      }
     })
   );
 
   context.register(
     workspace.onDidSaveTextDocument(document => {
-      scheduleDiagnostics(document, collection, context);
+      // diagnostic-upgrade: Save events also trigger revalidation (in addition to change events)
+      if (shouldHandleDocument(document)) {
+        scheduleDiagnostics(document, collection, context);
+        if (isTemplateUsageDocument(document)) {
+          invalidateTemplateUsageCache();
+          scheduleOpenDocumentsRefresh(collection, context);
+        }
+      } else if (isRelevantForCrossFileRevalidation(document)) {
+        scheduleOpenDocumentsRefresh(collection, context);
+      }
     })
   );
 
@@ -584,8 +566,9 @@ function activateDiagnosticsProvider(context: FeatureContext) {
   context.register(
     onDidChangeFeatureFlags(flags => {
       if (flags.diagnostics) {
-        refreshOpenDocuments(collection, context);
+        scheduleOpenDocumentsRefresh(collection, context);
       } else {
+        cancelDebounced(REFRESH_OPEN_DOCS_KEY);
         collection.clear();
       }
     })
@@ -593,28 +576,25 @@ function activateDiagnosticsProvider(context: FeatureContext) {
 
   context.register(
     onDidChangeCollieConfig(() => {
-      refreshOpenDocuments(collection, context);
+      scheduleOpenDocumentsRefresh(collection, context);
     })
   );
 
   context.register(
     workspace.onDidChangeConfiguration(event => {
       if (event.affectsConfiguration('collie.css.diagnostics.unknownClassOverride')) {
-        refreshOpenDocuments(collection, context);
+        scheduleOpenDocumentsRefresh(collection, context);
       }
     })
   );
-  
-  // Refresh diagnostics when HTML anchors change
+
   context.register(
-    onHtmlAnchorsChanged(() => {
-      if (isFeatureFlagEnabled('diagnostics')) {
-        refreshOpenDocuments(collection, context);
-      }
+    onDidChangeTemplateIndex(() => {
+      invalidateTemplateEntryCache();
+      invalidateTemplateUsageCache();
+      scheduleOpenDocumentsRefresh(collection, context);
     })
   );
 
   context.logger.info('Collie diagnostics provider registered.');
 }
-
-registerFeature(activateDiagnosticsProvider);
