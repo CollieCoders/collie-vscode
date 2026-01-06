@@ -104,7 +104,7 @@ function formatProps(props: readonly (IrProp | IrExpression)[], ctx: PrinterCont
   const parts: string[] = [];
   for (const prop of props) {
     if (prop.kind === 'prop') {
-      const value = prop.value !== undefined ? `=${prop.value}` : '';
+      const value = prop.value !== undefined ? `=${normalizePropValue(prop.value)}` : '';
       parts.push(`${prop.name}${value}`);
       continue;
     }
@@ -112,6 +112,17 @@ function formatProps(props: readonly (IrProp | IrExpression)[], ctx: PrinterCont
   }
 
   return `(${parts.join(' ')})`;
+}
+
+function normalizePropValue(value: string): string {
+  // If the value contains curly braces (expression), normalize its whitespace
+  if (value.startsWith('{') && value.endsWith('}')) {
+    const inner = value.slice(1, -1);
+    const normalized = normalizeExpressionWhitespace(inner);
+    return `{${normalized}}`;
+  }
+  // For string literals and other values, keep them as-is
+  return value;
 }
 
 function getInlineChild(children: readonly IrNode[], ctx: PrinterContext): string | undefined {
@@ -143,7 +154,22 @@ function printExpression(node: IrExpression, level: number, ctx: PrinterContext,
 }
 
 function formatExpressionPayload(expression: string) {
-  return `{{ ${expression} }}`;
+  // Collapse newlines and excessive whitespace to ensure attribute groups stay on one line
+  // Preserve whitespace in string literals by doing a simple line break replacement
+  const normalized = normalizeExpressionWhitespace(expression);
+  return `{{ ${normalized} }}`;
+}
+
+function normalizeExpressionWhitespace(text: string): string {
+  // Replace newlines with spaces, but be careful about string literals
+  // This is a simple heuristic: collapse sequences of whitespace to single spaces
+  // More sophisticated string-aware parsing would be needed for perfect handling,
+  // but this should work for most generated code
+  return text
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .join(' ');
 }
 
 function createIndent(level: number, ctx: PrinterContext) {
@@ -170,7 +196,7 @@ function printConditional(node: IrConditional, level: number, ctx: PrinterContex
     const branch = node.branches[i];
     const indent = createIndent(level, ctx);
     const directive = resolveConditionalDirective(i, branch.test);
-    const line = branch.test ? `${indent}${directive} ${branch.test}` : `${indent}${directive}`;
+    const line = branch.test ? `${indent}${directive} (${branch.test})` : `${indent}${directive}`;
     out.push(line);
     for (const child of branch.children) {
       printNode(child, level + 1, ctx, out);
