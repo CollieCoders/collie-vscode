@@ -21,7 +21,8 @@
     "package": "vsce package",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "file-tree": "tree -l 20 -o file-tree.txt --ignore='node_modules/'"
   },
   "activationEvents": [
     "onCommand:collie.convertToCollie",
