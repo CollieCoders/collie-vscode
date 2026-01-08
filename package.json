@@ -164,8 +164,8 @@
         "category": "Collie"
       },
       {
-        "command": "collie.customizePropsFieldColor",
-        "title": "Collie: Customize Props Field Color",
+        "command": "collie.customizeInputsFieldColor",
+        "title": "Collie: Customize Inputs Field Color",
         "category": "Collie"
       },
       {
@@ -299,13 +299,13 @@
             "foreground": "#C586C0",
             "fontStyle": "italic"
           },
-          "colliePropsKeyword": {
+          "collieInputsKeyword": {
             "foreground": "#B39DF3"
           },
-          "colliePropsField": {
+          "collieInputsField": {
             "foreground": "#E0AF68"
           },
-          "colliePropsFieldFn": {
+          "collieInputsFieldFn": {
             "foreground": "#9ECE6A"
           },
           "collieEventHandler": {

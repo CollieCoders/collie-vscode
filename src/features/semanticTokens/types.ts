@@ -9,7 +9,7 @@ export interface CollieSemanticToken {
 
 export interface TokenizerState {
   inBlockComment: boolean;
-  propsIndent: number | null;
+  inputsIndent: number | null;
   classesIndent: number | null;
 }
 

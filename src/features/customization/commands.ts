@@ -16,7 +16,7 @@ const CUSTOMIZATION_COMMANDS: CustomizationCommand[] = [
   { command: 'collie.customizeTokenColor' },
   { command: 'collie.customizeTagColor', tokenType: 'collieTag' },
   { command: 'collie.customizeDirectiveColor', tokenType: 'collieDirective' },
-  { command: 'collie.customizePropsFieldColor', tokenType: 'colliePropsField' },
+  { command: 'collie.customizeInputsFieldColor', tokenType: 'collieInputsField' },
   { command: 'collie.customizeClassShorthandColor', tokenType: 'collieClassShorthand' }
 ];
 
