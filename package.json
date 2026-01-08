@@ -91,7 +91,7 @@
         "collie.features.hover": {
           "type": "boolean",
           "default": true,
-          "description": "Enable Collie hover info (directives, props, expressions)."
+          "description": "Enable Collie hover info (directives, inputs, expressions)."
         },
         "collie.format.indentSize": {
           "type": "number",

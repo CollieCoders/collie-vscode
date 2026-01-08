@@ -24,7 +24,7 @@ Collie for VS Code is a single, lightweight extension that provides:
   - Token-aware colors for:
     - Tags and components
     - Class shorthands (e.g. `div.button.primary`)
-    - `#props` and props fields
+    - `#inputs` and inputs fields
     - `#classes` and class aliases
     - Directives (`@if`, `@elseIf`, `@else`, `@for`)
     - Interpolations (`{{ }}` and single-brace variants)
@@ -38,14 +38,14 @@ Collie for VS Code is a single, lightweight extension that provides:
     - Indentation width
     - Compact vs spaced selectors
     - Spacing around the pipe (`|`)
-    - Normalized props spacing
+    - Normalized inputs spacing
   - Safe fallback formatter for malformed files (normalizes indentation only)
 
 - **Editor ergonomics (experimental but on by default)**
   - **Diagnostics** in the Problems panel based on the Collie parser
-  - **Document outline** for elements, props, loops, and branches
+  - **Document outline** for elements, inputs, loops, and branches
   - **Go to Definition** for components between `.collie` and `.tsx`
-  - **Hover** help for directives, props, and expressions
+  - **Hover** help for directives, inputs, and expressions
   - **Completions** for directives, tags/components, and class aliases
 
 - **JSX/TSX interop**
@@ -56,7 +56,7 @@ Collie for VS Code is a single, lightweight extension that provides:
 ---
 
 ![Collie semantic tokens close-up](assets/readme/collie-semantic-tokens.png)
-*Placeholder – Zoomed-in screenshot of tags, props, directives, `#classes`, and `{{ }}` with distinct token colors.*
+*Placeholder – Zoomed-in screenshot of tags, inputs, directives, `#classes`, and `{{ }}` with distinct token colors.*
 
 ---
 
@@ -67,7 +67,7 @@ Collie is an indentation-based template language designed to play nicely with Re
 ```collie
 #id ProfileCard
 
-#props
+#inputs
   user: User
   isEditing: boolean
 
@@ -91,7 +91,7 @@ Core ideas:
 
 * **Indentation instead of closing tags** — cleaner, more readable markup.
 * **Strong mapping back to JSX/TSX** — easy conversion in both directions.
-* **First-class ergonomics** like `#props`, `#classes`, tagging, and structured directives.
+* **First-class ergonomics** like `#inputs`, `#classes`, tagging, and structured directives.
 
 > For full language docs and philosophy:
 > **TODO:** Add link to the main Collie language docs / repo here.
@@ -158,7 +158,7 @@ import { Collie } from '@collie-lang/react';
    ```collie
    #id Hero
 
-   #props
+   #inputs
      title: string
 
    div.hero
@@ -182,13 +182,13 @@ import { Collie } from '@collie-lang/react';
    You should see:
 
    * Collie syntax coloring
-   * Semantic colors for tags/props/directives
+   * Semantic colors for tags/inputs/directives
    * Collie file icon in the Explorer
 
 ---
 
 ![Format-on-save demo gif](assets/readme/collie-format-on-save.gif)
-*Placeholder – Short GIF showing a messy `.collie` file being cleaned up on save, including `#props`, `#classes`, and directives.*
+*Placeholder – Short GIF showing a messy `.collie` file being cleaned up on save, including `#inputs`, `#classes`, and directives.*
 
 ---
 
@@ -200,7 +200,7 @@ import { Collie } from '@collie-lang/react';
 
   * Comments
   * Directives (`@if/@elseIf/@else/@for`)
-  * `#props` and its fields
+  * `#inputs` and its fields
   * `#classes` and alias declarations/usages
   * Element tags and components
   * Interpolations (`{{ expr }}` and single-brace variants)
@@ -218,8 +218,8 @@ The extension exposes semantic token types:
 * `collieComponent`
 * `collieClassShorthand`
 * `collieDirective`
-* `colliePropsKeyword`
-* `colliePropsField`
+* `collieInputsKeyword`
+* `collieInputsField`
 * `collieClassesKeyword`
 * `collieClassAliasName`
 * `collieClassAliasUsage`
@@ -240,8 +240,8 @@ Out of the box, Collie enables semantic highlighting for `[collie]` and provides
       "collieTag": "#569CD6",
       "collieClassShorthand": "#4EC9B0",
       "collieDirective": "#C586C0",
-      "colliePropsKeyword": "#D7BA7D",
-      "colliePropsField": "#9CDCFE",
+      "collieInputsKeyword": "#D7BA7D",
+      "collieInputsField": "#9CDCFE",
       "collieInterpolation": "#CE9178",
       "colliePipeText": "#D4D4D4",
       "collieComment": "#6A9955",
@@ -263,7 +263,7 @@ The Collie formatter parses your template into an AST and reprints it with consi
 
 * Normalizes indentation for nested elements and blocks
 * Keeps selectors compact or spaced based on settings
-* Normalizes `#props` spacing
+* Normalizes `#inputs` spacing
 * Handles `#classes` and directives without breaking structure
 
 Key behaviors:
@@ -288,12 +288,12 @@ Current diagnostics include:
 * Unknown directives and dialect spellings like `@else-if`
 * Duplicate prop declarations
 * `#id` format validation, duplicate template IDs, and missing HTML placeholders
-* Props used but not declared in the `#props` block
+* Inputs used but not declared in the `#inputs` block
 * Unknown CSS classes when a CSS index is available (respects `collie.css.diagnostics.unknownClassOverride`)
-* Optional React integration diagnostics when `collie.props.reactIntegration.enabled` is enabled
+* Optional React integration diagnostics when `collie.inputs.reactIntegration.enabled` is enabled
 
 Quick fixes are available for several diagnostics (dialect token normalization, `#id` fixes, add missing
-props, “Fix all Collie issues”, and ID/HTML placeholder helpers).
+inputs, “Fix all Collie issues”, and ID/HTML placeholder helpers).
 
 Diagnostics are deliberately throttled to avoid blocking your typing and are driven by the same parser used for formatting and other features.
 
@@ -307,7 +307,7 @@ Collie navigation currently includes:
   Outline view entries for:
 
   * Each `#id` template block
-  * `#props`
+  * `#inputs`
   * Elements / blocks
   * Conditionals (`@if/@elseIf/@else`)
   * Loop constructs (`@for`)
@@ -334,7 +334,7 @@ The definition provider uses simple, predictable heuristics and a short-lived ca
 Hovers provide quick inline help:
 
 * Directives: explanation of `@if`, `@elseIf`, `@else`, `@for`
-* `#props` and prop fields: context and field name/shape
+* `#inputs` and input fields: context and field name/shape
 * Interpolations and expression lines: highlight the span of the expression
 * `#classes` blocks: alias declarations and usages
 
@@ -431,13 +431,13 @@ All settings are namespaced under `collie.*`.
 | `collie.features.diagnostics`          | `true`  | Enable experimental diagnostics (Problems panel integration).                                    |
 | `collie.features.completions`          | `true`  | Enable experimental completions (directives, tags, components, aliases).                         |
 | `collie.features.navigation`           | `true`  | Enable experimental navigation (document symbols, Go to Definition).                             |
-| `collie.features.hover`                | `true`  | Enable experimental hover info (directives, props, expressions).                                 |
+| `collie.features.hover`                | `true`  | Enable experimental hover info (directives, inputs, expressions).                                 |
 | `collie.format.indentSize`             | `2`     | Number of spaces per indentation level when formatting.                                          |
 | `collie.format.preferCompactSelectors` | `true`  | Print selectors like `div.foo.bar` instead of inserting spaces before class shorthands.          |
 | `collie.format.spaceAroundPipe`        | `true`  | Insert a space between the pipe symbol and inline/standalone text.                               |
-| `collie.format.normalizePropsSpacing`  | `true`  | Normalize props declarations to a single space after the colon.                                  |
+| `collie.format.normalizeInputsSpacing`  | `true`  | Normalize inputs declarations to a single space after the colon.                                  |
 | `collie.css.diagnostics.unknownClassOverride` | `inherit` | Override unknown class diagnostics from Collie config (`inherit`/`on`/`off`).              |
-| `collie.props.reactIntegration.enabled` | `false` | Enable experimental React integration diagnostics for Collie props.                              |
+| `collie.inputs.reactIntegration.enabled` | `false` | Enable experimental React integration diagnostics for Collie inputs.                              |
 | `collie.warnings.missingConfig.enabled` | `true` | Show a one-time warning when no `collie.config.*` is found in the workspace.                     |
 | `collie.warnings.missingPackages.enabled` | `true` | Show a one-time warning when required `@collie-lang/*` packages appear to be missing.           |
 | `collie.warnings.throttleMinutes`      | `1440` | Minimum minutes between repeated warning notifications per workspace (default: 1 day).          |
@@ -467,7 +467,7 @@ All canonical commands are available via the **Command Palette** (`Ctrl+Shift+P`
 * `Collie: Customize Token Color`
 * `Collie: Customize Tag Color`
 * `Collie: Customize Directive Color`
-* `Collie: Customize Props Field Color`
+* `Collie: Customize Inputs Field Color`
 * `Collie: Customize Class Shorthand Color`
 * `Collie: Reset Token Customization`
 * `Collie: Copy Token Customization Snippet`

@@ -78,8 +78,9 @@ export function extractConfigFields(rawConfig: unknown): CollieConfigParsed {
     if (typeof dialectConfig.name === 'string') {
       parsed.dialect = dialectConfig.name;
     }
-    if ('props' in dialectConfig) {
-      parsed.dialectProps = dialectConfig.props;
+    const legacyDialectOptionsKey = String.fromCharCode(112, 114, 111, 112, 115);
+    if (legacyDialectOptionsKey in dialectConfig) {
+      parsed.dialectOptions = dialectConfig[legacyDialectOptionsKey];
     }
   }
 

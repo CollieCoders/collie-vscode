@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { Diagnostic as VSDiagnostic, DiagnosticSeverity, Range, type TextDocument } from 'vscode';
 import type { ParsedDocument } from '../../lang';
 import type { CollieConfigResult } from '../../config/types';

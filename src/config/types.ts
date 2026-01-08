@@ -2,7 +2,7 @@ export interface CollieConfigParsed {
   cssStrategy?: string;
   cssUnknownClass?: string;
   dialect?: string;
-  dialectProps?: unknown;
+  dialectOptions?: unknown;
   inputsReactIntegrationEnabled?: boolean;
 }
 

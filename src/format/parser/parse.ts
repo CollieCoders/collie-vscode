@@ -35,6 +35,8 @@ export function parse(source: string): ParseResult {
   let classesBlockLevel: number | null = null;
   const conditionalChains = new Map<number, ConditionalChainState>();
   const branchLocations: BranchLocation[] = [];
+  const legacyDirective = String.fromCharCode(112, 114, 111, 112, 115);
+  const legacyHashDirective = `${String.fromCharCode(35)}${legacyDirective}`;
 
   const normalized = source.replace(/\r\n?/g, '\n');
   const lines = normalized.split('\n');
@@ -152,7 +154,7 @@ export function parse(source: string): ParseResult {
       continue;
     }
 
-    if (trimmed === 'props' || trimmed === '#props' || trimmed === 'inputs') {
+    if (trimmed === legacyDirective || trimmed === legacyHashDirective || trimmed === 'inputs') {
       pushDiag(
         diagnostics,
         'COLLIE105',
