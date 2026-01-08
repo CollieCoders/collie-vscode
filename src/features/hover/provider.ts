@@ -63,10 +63,10 @@ function createDirectiveHover(kind: DirectiveKind): Hover {
   return new Hover(md);
 }
 
-function createPropsHover(field: InputsField): Hover {
+function createInputsHover(field: InputsField): Hover {
   const optional = field.optional ? '?' : '';
   const md = new MarkdownString();
-  md.appendMarkdown(`**${field.name}${optional}**: \`${field.typeText}\`\n\nDefined in the props block.`);
+  md.appendMarkdown(`**${field.name}${optional}**: \`${field.typeText}\`\n\nDefined in the inputs block.`);
   return new Hover(md);
 }
 
@@ -119,14 +119,14 @@ function getConditionalDirectiveHover(node: ConditionalNode, offset: number): Ho
   return undefined;
 }
 
-function getPropsHover(offset: number, props?: InputsDecl): Hover | undefined {
-  if (!props) {
+function getInputsHover(offset: number, inputs?: InputsDecl): Hover | undefined {
+  if (!inputs) {
     return undefined;
   }
 
-  for (const field of props.fields) {
+  for (const field of inputs.fields) {
     if (spanContains(field.span, offset)) {
-      return createPropsHover(field);
+      return createInputsHover(field);
     }
   }
   return undefined;
@@ -187,9 +187,9 @@ function provideHover(document: TextDocument, position: Position, context: Featu
       return directiveHover;
     }
 
-    const propsHover = getPropsHover(offset, parsed.ast.inputs);
-    if (propsHover) {
-      return propsHover;
+    const inputsHover = getInputsHover(offset, parsed.ast.inputs);
+    if (inputsHover) {
+      return inputsHover;
     }
 
     const aliasHover = getClassAliasHover(offset, parsed.ast);

@@ -26,9 +26,9 @@ function createDocumentRootSymbol(document: TextDocument, children: DocumentSymb
   return [root];
 }
 
-function buildPropsSymbol(document: TextDocument, props: InputsDecl): DocumentSymbol | null {
-  const range = spanToRange(document, props.span);
-  const symbol = new DocumentSymbol('props', 'Props block', SymbolKind.Field, range, range);
+function buildInputsSymbol(document: TextDocument, inputs: InputsDecl): DocumentSymbol | null {
+  const range = spanToRange(document, inputs.span);
+  const symbol = new DocumentSymbol('inputs', 'Inputs block', SymbolKind.Field, range, range);
   return symbol;
 }
 
@@ -138,9 +138,9 @@ function buildTemplateChildren(
   const children: DocumentSymbol[] = [];
 
   if (parsed.ast.inputs && spanWithinRange(document, parsed.ast.inputs.span, range)) {
-    const propsSymbol = buildPropsSymbol(document, parsed.ast.inputs);
-    if (propsSymbol) {
-      children.push(propsSymbol);
+    const inputsSymbol = buildInputsSymbol(document, parsed.ast.inputs);
+    if (inputsSymbol) {
+      children.push(inputsSymbol);
     }
   }
 
@@ -165,9 +165,9 @@ function buildDocumentSymbols(document: TextDocument): DocumentSymbol[] {
     const children: DocumentSymbol[] = [];
 
     if (parsed.ast.inputs) {
-      const propsSymbol = buildPropsSymbol(document, parsed.ast.inputs);
-      if (propsSymbol) {
-        children.push(propsSymbol);
+      const inputsSymbol = buildInputsSymbol(document, parsed.ast.inputs);
+      if (inputsSymbol) {
+        children.push(inputsSymbol);
       }
     }
 
