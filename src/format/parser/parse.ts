@@ -18,6 +18,7 @@ import {
   isElementNode,
   parseClassAliasLine,
   parseElement,
+  parseInputsField,
   parseInlineNode,
   parseTextLine,
   validateClassAliasDefinitions,
@@ -30,7 +31,7 @@ export function parse(source: string): ParseResult {
   const diagnostics: Diagnostic[] = [];
   const root: RootNode = { type: 'Root', children: [] };
   const stack: StackItem[] = [{ node: root, level: -1 }];
-  let propsBlockLevel: number | null = null;
+  let inputsBlockLevel: number | null = null;
   let classesBlockLevel: number | null = null;
   const conditionalChains = new Map<number, ConditionalChainState>();
   const branchLocations: BranchLocation[] = [];
@@ -83,8 +84,8 @@ export function parse(source: string): ParseResult {
 
     let level = indent / 2;
 
-    if (propsBlockLevel !== null && level <= propsBlockLevel) {
-      propsBlockLevel = null;
+    if (inputsBlockLevel !== null && level <= inputsBlockLevel) {
+      inputsBlockLevel = null;
     }
     if (classesBlockLevel !== null && level <= classesBlockLevel) {
       classesBlockLevel = null;
@@ -132,7 +133,7 @@ export function parse(source: string): ParseResult {
         pushDiag(
           diagnostics,
           'COLLIE402',
-          'ID directive must appear before props, classes, and any template nodes.',
+          'ID directive must appear before inputs, classes, and any template nodes.',
           lineNumber,
           indent + 1,
           lineOffset,
@@ -151,12 +152,25 @@ export function parse(source: string): ParseResult {
       continue;
     }
 
-    if (trimmed === 'props') {
+    if (trimmed === 'props' || trimmed === '#props' || trimmed === 'inputs') {
+      pushDiag(
+        diagnostics,
+        'COLLIE105',
+        'Invalid directive. Use #inputs.',
+        lineNumber,
+        indent + 1,
+        lineOffset,
+        trimmed.length
+      );
+      continue;
+    }
+
+    if (trimmed === '#inputs') {
       if (level !== 0) {
         pushDiag(
           diagnostics,
           'COLLIE102',
-          'Props block must be at the top level.',
+          'Inputs block must be at the top level.',
           lineNumber,
           indent + 1,
           lineOffset,
@@ -166,7 +180,7 @@ export function parse(source: string): ParseResult {
         pushDiag(
           diagnostics,
           'COLLIE101',
-          'Props block must appear before any template nodes.',
+          'Inputs block must appear before any template nodes.',
           lineNumber,
           indent + 1,
           lineOffset,
@@ -177,7 +191,7 @@ export function parse(source: string): ParseResult {
           fields: [],
           span: createSpan(lineNumber, indent + 1, Math.max(trimmed.length, 1), lineOffset)
         };
-        propsBlockLevel = level;
+        inputsBlockLevel = level;
       }
       continue;
     }
@@ -221,12 +235,12 @@ export function parse(source: string): ParseResult {
       continue;
     }
 
-    if (propsBlockLevel !== null && level > propsBlockLevel) {
-      if (level !== propsBlockLevel + 1) {
+    if (inputsBlockLevel !== null && level > inputsBlockLevel) {
+      if (level !== inputsBlockLevel + 1) {
         pushDiag(
           diagnostics,
           'COLLIE102',
-          'Props lines must be indented two spaces under the props header.',
+          'Inputs lines must be indented two spaces under the inputs header.',
           lineNumber,
           indent + 1,
           lineOffset
@@ -234,10 +248,10 @@ export function parse(source: string): ParseResult {
         continue;
       }
 
-      // const field = parsePropsField(trimmed, lineNumber, indent + 1, lineOffset, diagnostics);
-      // if (field && root.inputs) {
-      //   root.inputs.fields.push(field);
-      // }
+      const field = parseInputsField(trimmed, lineNumber, indent + 1, lineOffset, diagnostics);
+      if (field && root.inputs) {
+        root.inputs.fields.push(field);
+      }
       continue;
     }
 

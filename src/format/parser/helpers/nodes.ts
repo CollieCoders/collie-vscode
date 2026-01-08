@@ -4,7 +4,7 @@ import type {
   ElementNode,
   ForLoopNode,
   Node,
-  // InputsField,
+  InputsField,
   RootNode,
   TextNode
 } from '../ast';
@@ -95,51 +95,47 @@ export function parseInlineNode(
   return parseElement(trimmed, lineNumber, column, lineOffset, diagnostics);
 }
 
-// export function parsePropsField(
-//   line: string,
-//   lineNumber: number,
-//   column: number,
-//   lineOffset: number,
-//   diagnostics: Diagnostic[]
-// ): InputsField | null {
-//   const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:\s*(.+)$/);
-//   if (!match) {
-//     pushDiag(
-//       diagnostics,
-//       'COLLIE102',
-//       'Props lines must be in the form `name[:?] Type`.',
-//       lineNumber,
-//       column,
-//       lineOffset,
-//       Math.max(line.length, 1)
-//     );
-//     return null;
-//   }
+export function parseInputsField(
+  line: string,
+  lineNumber: number,
+  column: number,
+  lineOffset: number,
+  diagnostics: Diagnostic[]
+): InputsField | null {
+  void diagnostics;
+  const newSyntaxMatch = line.match(/^([A-Za-z_][A-Za-z0-9_]*)(\(\))?$/);
+  if (newSyntaxMatch) {
+    const name = newSyntaxMatch[1];
+    const hasFnSuffix = newSyntaxMatch[2] === '()';
+    const span = createSpan(lineNumber, column, Math.max(line.length, 1), lineOffset);
+    return {
+      name,
+      optional: false,
+      typeText: '',
+      kind: hasFnSuffix ? 'fn' : 'value',
+      span
+    };
+  }
 
-//   const [, name, optionalFlag, typePart] = match;
-//   const typeText = typePart.trim();
-//   if (!typeText) {
-//     pushDiag(
-//       diagnostics,
-//       'COLLIE102',
-//       'Props lines must provide a type after the colon.',
-//       lineNumber,
-//       column,
-//       lineOffset,
-//       Math.max(line.length, 1)
-//     );
-//     return null;
-//   }
+  const legacyMatch = line.match(/^([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:\s*(.+)$/);
+  if (!legacyMatch) {
+    return null;
+  }
 
-//   const span = createSpan(lineNumber, column, Math.max(line.length, 1), lineOffset);
+  const name = legacyMatch[1];
+  const optional = legacyMatch[2] === '?';
+  const typeText = legacyMatch[3].trim();
+  const span = createSpan(lineNumber, column, Math.max(line.length, 1), lineOffset);
+  const kind = typeText === 'fn' ? 'fn' : 'value';
 
-//   return {
-//     name,
-//     optional: optionalFlag === '?',
-//     typeText,
-//     span
-//   };
-// }
+  return {
+    name,
+    optional,
+    typeText,
+    kind,
+    span
+  };
+}
 
 export function parseElement(
   line: string,
