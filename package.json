@@ -124,10 +124,10 @@
           "default": "inherit",
           "description": "Override unknown class diagnostics from Collie config (inherit/on/off)."
         },
-        "collie.props.reactIntegration.enabled": {
+        "collie.inputs.reactIntegration.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Enable experimental React integration diagnostics for Collie props."
+          "description": "Enable experimental React integration diagnostics for Collie inputs."
         },
         "collie.warnings.missingConfig.enabled": {
           "type": "boolean",

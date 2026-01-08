@@ -10,7 +10,7 @@ interface FixPayload {
 interface DiagnosticData {
   fix?: FixPayload;
   kind?: string;
-  propName?: string;
+  inputName?: string;
 }
 
 const DIALECT_TOKEN_PATTERNS = [
@@ -19,7 +19,7 @@ const DIALECT_TOKEN_PATTERNS = [
   { regex: /@else\s+if\b/g, replacement: '@elseIf' }
 ];
 
-const BARE_PROP_PATTERNS = [
+const BARE_INPUT_PATTERNS = [
   /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g,
   /(?<!\{)\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}(?!\})/g,
   /^[ \t]*=\s*([A-Za-z_][A-Za-z0-9_]*)\b/gm
@@ -78,19 +78,19 @@ function collectDialectDiagnostics(document: TextDocument): VSDiagnostic[] {
   return diagnostics;
 }
 
-function collectPropUsageDiagnostics(document: TextDocument, parsed: ParsedDocument | null): VSDiagnostic[] {
-  const declaredProps = new Set(parsed?.ast.inputs?.fields.map(field => field.name) ?? []);
+function collectInputUsageDiagnostics(document: TextDocument, parsed: ParsedDocument | null): VSDiagnostic[] {
+  const declaredInputs = new Set(parsed?.ast.inputs?.fields.map(field => field.name) ?? []);
 
   const diagnostics: VSDiagnostic[] = [];
   const text = document.getText();
   const seen = new Set<string>();
 
-  for (const pattern of BARE_PROP_PATTERNS) {
+  for (const pattern of BARE_INPUT_PATTERNS) {
     const regex = new RegExp(pattern.source, pattern.flags);
     let match: RegExpExecArray | null;
     while ((match = regex.exec(text)) !== null) {
       const name = match[1];
-      if (!name || declaredProps.has(name) || seen.has(name)) {
+      if (!name || declaredInputs.has(name) || seen.has(name)) {
         continue;
       }
       seen.add(name);
@@ -102,12 +102,12 @@ function collectPropUsageDiagnostics(document: TextDocument, parsed: ParsedDocum
       diagnostics.push(
         createDiagnostic(
           range,
-          `Prop "${name}" is used but not declared in the props block.`,
+          `Input "${name}" is used but not declared in the inputs block.`,
           DiagnosticSeverity.Warning,
           'COLLIE501',
           {
-            kind: 'addPropDeclaration',
-            propName: name
+            kind: 'addInputDeclaration',
+            inputName: name
           }
         )
       );
@@ -126,7 +126,7 @@ export function collectCompilerDiagnostics(
   const diagnostics: VSDiagnostic[] = [];
 
   diagnostics.push(...collectDialectDiagnostics(document));
-  diagnostics.push(...collectPropUsageDiagnostics(document, parsed));
+  diagnostics.push(...collectInputUsageDiagnostics(document, parsed));
 
   return diagnostics;
 }

@@ -39,7 +39,7 @@ function shouldHandleDocument(document: TextDocument): boolean {
 // diagnostic-upgrade: Check if file changes should trigger Collie doc revalidation
 function isRelevantForCrossFileRevalidation(document: TextDocument): boolean {
   const lang = document.languageId;
-  // TSX/TS/JS files affect props/template diagnostics
+  // TSX/TS/JS files affect inputs/template diagnostics
   if (lang === 'typescriptreact' || lang === 'typescript' || 
       lang === 'javascriptreact' || lang === 'javascript') {
     return true;
@@ -76,10 +76,10 @@ function collectParserDiagnostics(document: TextDocument, parsed: ParsedDocument
   return parsed.diagnostics.map(diag => convertParserDiagnostic(document, diag));
 }
 
-function collectDuplicatePropDiagnostics(document: TextDocument): VSDiagnostic[] {
+function collectDuplicateInputDiagnostics(document: TextDocument): VSDiagnostic[] {
   const diagnostics: VSDiagnostic[] = [];
-  let inPropsBlock = false;
-  let propsIndent = 0;
+  let inInputsBlock = false;
+  let inputsIndent = 0;
   const seen = new Map<string, Range>();
 
   for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
@@ -91,18 +91,18 @@ function collectDuplicatePropDiagnostics(document: TextDocument): VSDiagnostic[]
 
     const indent = line.firstNonWhitespaceCharacterIndex;
 
-    if (!inPropsBlock) {
-      if (trimmed === '#props') {
-        inPropsBlock = true;
-        propsIndent = indent;
+    if (!inInputsBlock) {
+      if (trimmed === '#inputs') {
+        inInputsBlock = true;
+        inputsIndent = indent;
       }
       continue;
     }
 
-    if (indent <= propsIndent) {
-      inPropsBlock = trimmed === '#props';
-      if (inPropsBlock) {
-        propsIndent = indent;
+    if (indent <= inputsIndent) {
+      inInputsBlock = trimmed === '#inputs';
+      if (inInputsBlock) {
+        inputsIndent = indent;
       }
       continue;
     }
@@ -118,7 +118,7 @@ function collectDuplicatePropDiagnostics(document: TextDocument): VSDiagnostic[]
     const range = new Range(lineNumber, startColumn, lineNumber, startColumn + name.length);
 
     if (seen.has(name)) {
-      diagnostics.push(createDiagnostic(range, `Prop "${name}" is declared multiple times.`, 'COLLIE401'));
+      diagnostics.push(createDiagnostic(range, `Input "${name}" is declared multiple times.`, 'COLLIE401'));
     } else {
       seen.set(name, range);
     }
@@ -421,7 +421,7 @@ async function applyDiagnostics(
   }
 
   diagnostics.push(...collectUnknownDirectiveDiagnostics(document));
-  diagnostics.push(...collectDuplicatePropDiagnostics(document));
+  diagnostics.push(...collectDuplicateInputDiagnostics(document));
   diagnostics.push(...collectCompilerDiagnostics(document, parsed, config));
   diagnostics.push(...collectUnknownClassDiagnostics(document, parsed, config));
 

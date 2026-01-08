@@ -20,9 +20,9 @@ import * as ts from 'typescript';
 import type { SourceSpan } from '../../format/parser/diagnostics';
 import { getTextPreferOpenDoc } from './helpers/textHelpers';
 
-const COLLECTION_NAME = 'collie-react-props';
+const COLLECTION_NAME = 'collie-react-inputs';
 const TEMPLATE_USAGE_COLLECTION = 'collie-template-usage';
-const ENABLED_SETTING_KEY = 'collie.props.reactIntegration.enabled';
+const ENABLED_SETTING_KEY = 'collie.inputs.reactIntegration.enabled';
 const TSX_INCLUDE_GLOB = '**/*.{tsx,jsx}';
 const TSX_EXCLUDE_GLOB = '**/{node_modules,dist,build}/**';
 const MAX_TS_FILES = 200;
@@ -32,7 +32,7 @@ const DIAGNOSTIC_DEBOUNCE_MS = 300;
 const COLLIE_COMPONENT_NAMES = new Set(['Collie']);
 
 interface UsageResult {
-  props: Set<string>;
+  inputs: Set<string>;
   sawSpread: boolean;
 }
 
@@ -101,7 +101,7 @@ async function isReactIntegrationEnabled(document: TextDocument, context: Featur
   }
 
   const config = await resolveCollieConfigForDocument(document, context.logger);
-  return config.parsed.propsReactIntegrationEnabled === true;
+  return config.parsed.inputsReactIntegrationEnabled === true;
 }
 
 async function readFileText(uri: Uri): Promise<string | null> {
@@ -117,11 +117,11 @@ async function readFileText(uri: Uri): Promise<string | null> {
   }
 }
 
-function collectPropsFromJsx(
+function collectInputsFromJsx(
   sourceFile: ts.SourceFile,
   componentName: string
 ): UsageResult {
-  const props = new Set<string>();
+  const inputs = new Set<string>();
   let sawSpread = false;
 
   const visit = (node: ts.Node): void => {
@@ -131,7 +131,7 @@ function collectPropsFromJsx(
         for (const attr of node.attributes.properties) {
           if (ts.isJsxAttribute(attr)) {
             if (ts.isIdentifier(attr.name)) {
-              props.add(attr.name.text);
+              inputs.add(attr.name.text);
             }
           } else if (ts.isJsxSpreadAttribute(attr)) {
             sawSpread = true;
@@ -144,7 +144,7 @@ function collectPropsFromJsx(
   };
 
   visit(sourceFile);
-  return { props, sawSpread };
+  return { inputs, sawSpread };
 }
 
 function collectUnknownTemplateIdDiagnostics(document: TextDocument): VSDiagnostic[] {
@@ -214,7 +214,7 @@ function collectUnknownTemplateIdDiagnostics(document: TextDocument): VSDiagnost
   return diagnostics;
 }
 
-async function findComponentPropUsages(
+async function findComponentInputUsages(
   folder: WorkspaceFolder,
   componentName: string,
   context: FeatureContext
@@ -225,13 +225,13 @@ async function findComponentPropUsages(
 
   if (files.length > MAX_TS_FILES) {
     context.logger.info(
-      `Skipping React prop analysis (more than ${MAX_TS_FILES} TSX/JSX files).`
+      `Skipping React input analysis (more than ${MAX_TS_FILES} TSX/JSX files).`
     );
-    return { props: new Set(), sawSpread: false };
+    return { inputs: new Set(), sawSpread: false };
   }
 
   let totalBytes = 0;
-  const props = new Set<string>();
+  const inputs = new Set<string>();
   let sawSpread = false;
 
   for (const uri of files) {
@@ -251,7 +251,7 @@ async function findComponentPropUsages(
     totalBytes += size;
     if (totalBytes > MAX_TOTAL_BYTES) {
       context.logger.info(
-        `Skipping React prop analysis after ${MAX_TOTAL_BYTES} bytes of TSX/JSX.`
+      `Skipping React input analysis after ${MAX_TOTAL_BYTES} bytes of TSX/JSX.`
       );
       break;
     }
@@ -270,9 +270,9 @@ async function findComponentPropUsages(
       ts.ScriptKind.TSX
     );
 
-    const result = collectPropsFromJsx(sourceFile, componentName);
-    for (const name of result.props) {
-      props.add(name);
+    const result = collectInputsFromJsx(sourceFile, componentName);
+    for (const name of result.inputs) {
+      inputs.add(name);
     }
     if (result.sawSpread) {
       sawSpread = true;
@@ -280,10 +280,10 @@ async function findComponentPropUsages(
   }
 
   if (sawSpread) {
-    context.logger.info('React prop analysis encountered JSX spread props; results may be incomplete.');
+    context.logger.info('React input analysis encountered JSX spread inputs; results may be incomplete.');
   }
 
-  return { props, sawSpread };
+  return { inputs, sawSpread };
 }
 
 async function computeDiagnostics(document: TextDocument, context: FeatureContext): Promise<VSDiagnostic[]> {
@@ -298,26 +298,26 @@ async function computeDiagnostics(document: TextDocument, context: FeatureContex
     return [];
   }
 
-  const declaredProps = new Set(parsed.ast.inputs?.fields.map(field => field.name) ?? []);
-  const propsSpan = parsed.ast.inputs?.span;
+  const declaredInputs = new Set(parsed.ast.inputs?.fields.map(field => field.name) ?? []);
+  const inputsSpan = parsed.ast.inputs?.span;
 
-  const usage = await findComponentPropUsages(folder, componentName, context);
+  const usage = await findComponentInputUsages(folder, componentName, context);
 
   const diagnostics: VSDiagnostic[] = [];
-  const range = spanToRange(document, propsSpan);
+  const range = spanToRange(document, inputsSpan);
 
-  for (const propName of usage.props) {
-    if (!declaredProps.has(propName)) {
+  for (const inputName of usage.inputs) {
+    if (!declaredInputs.has(inputName)) {
       const diagnostic = new VSDiagnostic(
         range,
-        `Prop "${propName}" is passed to <${componentName}> but not declared in the props block.`,
+        `Input "${inputName}" is passed to <${componentName}> but not declared in the inputs block.`,
         DiagnosticSeverity.Information
       );
       diagnostic.code = 'COLLIE601';
       diagnostic.source = 'collie';
       diagnostic.data = {
-        kind: 'addPropDeclaration',
-        propName
+        kind: 'addInputDeclaration',
+        inputName
       };
       diagnostics.push(diagnostic);
     }
@@ -352,7 +352,7 @@ async function updateDiagnostics(
   try {
     diagnostics = await computeDiagnostics(document, context);
   } catch (error) {
-    context.logger.warn('React prop analysis failed.', error);
+    context.logger.warn('React input analysis failed.', error);
   }
 
   diagnosticsCache.set(cacheKey, {
@@ -462,7 +462,7 @@ function refreshOpenTemplateUsageDocuments(
   }
 }
 
-export function registerTsPropsDiagnostics(context: FeatureContext) {
+export function registerTsInputsDiagnostics(context: FeatureContext) {
   const collection = languages.createDiagnosticCollection(COLLECTION_NAME);
   context.register(collection);
 
@@ -573,5 +573,5 @@ export function registerTsPropsDiagnostics(context: FeatureContext) {
     })
   );
 
-  context.logger.info('React props diagnostics registered.');
+  context.logger.info('React inputs diagnostics registered.');
 }
