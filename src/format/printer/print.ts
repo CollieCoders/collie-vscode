@@ -5,7 +5,7 @@ import type {
   ExpressionNode,
   ForLoopNode,
   Node,
-  PropsDecl,
+  InputsDecl,
   RootNode,
   TextNode
 } from '../parser';
@@ -48,13 +48,13 @@ export function print(root: RootNode, options: PrintOptions = {}): string {
   const idValue = root.rawId ?? root.id;
   if (idValue) {
     lines.push(`#id ${idValue}`);
-    if (root.props || root.classAliases || root.children.length) {
+    if (root.inputs || root.classAliases || root.children.length) {
       lines.push('');
     }
   }
 
-  if (root.props) {
-    lines.push(...printProps(root.props, ctx));
+  if (root.inputs) {
+    lines.push(...printProps(root.inputs, ctx));
     if (root.classAliases || root.children.length) {
       lines.push('');
     }
@@ -74,7 +74,7 @@ export function print(root: RootNode, options: PrintOptions = {}): string {
   return `${lines.join('\n')  }\n`;
 }
 
-function printProps(props: PropsDecl, ctx: PrinterContext): string[] {
+function printProps(props: InputsDecl, ctx: PrinterContext): string[] {
   const lines = ['props'];
   for (const field of props.fields) {
     const indent = createIndent(ctx, 1);

@@ -79,7 +79,7 @@ function collectDialectDiagnostics(document: TextDocument): VSDiagnostic[] {
 }
 
 function collectPropUsageDiagnostics(document: TextDocument, parsed: ParsedDocument | null): VSDiagnostic[] {
-  const declaredProps = new Set(parsed?.ast.props?.fields.map(field => field.name) ?? []);
+  const declaredProps = new Set(parsed?.ast.inputs?.fields.map(field => field.name) ?? []);
 
   const diagnostics: VSDiagnostic[] = [];
   const text = document.getText();

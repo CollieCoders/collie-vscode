@@ -2,7 +2,7 @@ import { basename } from 'path';
 import type { TextDocument } from 'vscode';
 import { DocumentSymbol, languages, Range, SymbolKind } from 'vscode';
 import type { FeatureContext } from '../types';
-import type { ElementNode, Node, ConditionalNode, ConditionalBranch, ForLoopNode, PropsDecl } from '../../format/parser/ast';
+import type { ElementNode, Node, ConditionalNode, ConditionalBranch, ForLoopNode, InputsDecl } from '../../format/parser/ast';
 import type { SourceSpan } from '../../format/parser/diagnostics';
 import { getParsedDocument } from '../../lang/cache';
 import { listByFile } from '../../lang/templateIndex';
@@ -26,7 +26,7 @@ function createDocumentRootSymbol(document: TextDocument, children: DocumentSymb
   return [root];
 }
 
-function buildPropsSymbol(document: TextDocument, props: PropsDecl): DocumentSymbol | null {
+function buildPropsSymbol(document: TextDocument, props: InputsDecl): DocumentSymbol | null {
   const range = spanToRange(document, props.span);
   const symbol = new DocumentSymbol('props', 'Props block', SymbolKind.Field, range, range);
   return symbol;
@@ -137,8 +137,8 @@ function buildTemplateChildren(
 ): DocumentSymbol[] {
   const children: DocumentSymbol[] = [];
 
-  if (parsed.ast.props && spanWithinRange(document, parsed.ast.props.span, range)) {
-    const propsSymbol = buildPropsSymbol(document, parsed.ast.props);
+  if (parsed.ast.inputs && spanWithinRange(document, parsed.ast.inputs.span, range)) {
+    const propsSymbol = buildPropsSymbol(document, parsed.ast.inputs);
     if (propsSymbol) {
       children.push(propsSymbol);
     }
@@ -164,8 +164,8 @@ function buildDocumentSymbols(document: TextDocument): DocumentSymbol[] {
   if (templates.length === 0) {
     const children: DocumentSymbol[] = [];
 
-    if (parsed.ast.props) {
-      const propsSymbol = buildPropsSymbol(document, parsed.ast.props);
+    if (parsed.ast.inputs) {
+      const propsSymbol = buildPropsSymbol(document, parsed.ast.inputs);
       if (propsSymbol) {
         children.push(propsSymbol);
       }

@@ -4,7 +4,7 @@ import type {
   ElementNode,
   ExpressionNode,
   Node,
-  PropsDecl,
+  InputsDecl,
   RootNode,
   TextNode,
   TextPart
@@ -22,8 +22,8 @@ export function convertCollieAstToIr(root: RootNode): readonly IrNode[] {
   const nodes: IrNode[] = [];
   const aliasEnv = buildAliasEnvironment(root.classAliases);
 
-  if (root.props) {
-    nodes.push(createIrExpression(buildPropsComment(root.props)));
+  if (root.inputs) {
+    nodes.push(createIrExpression(buildPropsComment(root.inputs)));
   }
 
   nodes.push(...convertNodes(root.children, aliasEnv));
@@ -117,7 +117,7 @@ function isTextChunk(part: TextPart): part is Extract<TextPart, { type: 'text' }
   return part.type === 'text';
 }
 
-function buildPropsComment(props: PropsDecl): string {
+function buildPropsComment(props: InputsDecl): string {
   if (!props.fields.length) {
     return '/* Collie props block present. Add TypeScript props manually. */';
   }

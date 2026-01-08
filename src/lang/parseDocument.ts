@@ -1,6 +1,6 @@
 import { Position, type TextDocument } from 'vscode';
 import { parse } from '../format/parser';
-import type { PropsDecl, PropsField } from '../format/parser/ast';
+import type { InputsDecl, InputsField } from '../format/parser/ast';
 import type { Diagnostic, SourceSpan } from '../format/parser/diagnostics';
 import type { ParsedDocument } from '.';
 
@@ -124,7 +124,7 @@ export function parseCollieDocument(document: TextDocument): ParsedDocument {
 
   const hashProps = parseHashPropsDeclaration(document, propsBlocks);
   if (hashProps) {
-    root.props = hashProps;
+    root.inputs = hashProps;
   }
 
   if (root.rawId) {
@@ -188,12 +188,12 @@ function isLineInHashPropsBlock(lineIndex: number, blocks: HashPropsBlock[]): bo
 function parseHashPropsDeclaration(
   document: TextDocument,
   blocks: HashPropsBlock[]
-): PropsDecl | undefined {
+): InputsDecl | undefined {
   if (blocks.length === 0) {
     return undefined;
   }
 
-  const fields: PropsField[] = [];
+  const fields: InputsField[] = [];
   for (const block of blocks) {
     for (let lineIndex = block.startLine + 1; lineIndex <= block.endLine; lineIndex += 1) {
       const line = document.lineAt(lineIndex);

@@ -298,8 +298,8 @@ async function computeDiagnostics(document: TextDocument, context: FeatureContex
     return [];
   }
 
-  const declaredProps = new Set(parsed.ast.props?.fields.map(field => field.name) ?? []);
-  const propsSpan = parsed.ast.props?.span;
+  const declaredProps = new Set(parsed.ast.inputs?.fields.map(field => field.name) ?? []);
+  const propsSpan = parsed.ast.inputs?.span;
 
   const usage = await findComponentPropUsages(folder, componentName, context);
 

@@ -6,8 +6,8 @@ import type {
   ConditionalNode,
   ForLoopNode,
   Node,
-  PropsDecl,
-  PropsField,
+  InputsDecl,
+  InputsField,
   RootNode,
   TextNode
 } from '../../format/parser/ast';
@@ -63,7 +63,7 @@ function createDirectiveHover(kind: DirectiveKind): Hover {
   return new Hover(md);
 }
 
-function createPropsHover(field: PropsField): Hover {
+function createPropsHover(field: InputsField): Hover {
   const optional = field.optional ? '?' : '';
   const md = new MarkdownString();
   md.appendMarkdown(`**${field.name}${optional}**: \`${field.typeText}\`\n\nDefined in the props block.`);
@@ -119,7 +119,7 @@ function getConditionalDirectiveHover(node: ConditionalNode, offset: number): Ho
   return undefined;
 }
 
-function getPropsHover(offset: number, props?: PropsDecl): Hover | undefined {
+function getPropsHover(offset: number, props?: InputsDecl): Hover | undefined {
   if (!props) {
     return undefined;
   }
@@ -187,7 +187,7 @@ function provideHover(document: TextDocument, position: Position, context: Featu
       return directiveHover;
     }
 
-    const propsHover = getPropsHover(offset, parsed.ast.props);
+    const propsHover = getPropsHover(offset, parsed.ast.inputs);
     if (propsHover) {
       return propsHover;
     }

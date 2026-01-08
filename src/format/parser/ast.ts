@@ -15,7 +15,7 @@ export interface ClassAliasesDecl {
 export interface RootNode {
   type: 'Root';
   children: Node[];
-  props?: PropsDecl;
+  inputs?: InputsDecl;
   classAliases?: ClassAliasesDecl;
   id?: string;
   rawId?: string;
@@ -83,12 +83,12 @@ export interface ForLoopNode {
   span?: SourceSpan;
 }
 
-export interface PropsDecl {
-  fields: PropsField[];
+export interface InputsDecl {
+  fields: InputsField[];
   span?: SourceSpan;
 }
 
-export interface PropsField {
+export interface InputsField {
   name: string;
   optional: boolean;
   typeText: string;

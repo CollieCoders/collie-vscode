@@ -275,45 +275,65 @@
         "enabled": true,
         "rules": {
           "collieTag": {
-            "foreground": "#61AFEF"
+            "foreground": "#6CB6FF"
+          },
+          "collieComponent": {
+            "foreground": "#FFD580"
           },
           "collieClassShorthand": {
-            "foreground": "#56B6C2"
+            "foreground": "#4EC9B0"
+          },
+          "collieClassesKeyword": {
+            "foreground": "#C586C0"
+          },
+          "collieClassAliasName": {
+            "foreground": "#F26D6D"
+          },
+          "collieClassAliasUsage": {
+            "foreground": "#4EC9B0"
           },
           "collieDirective": {
-            "foreground": "#C678DD"
+            "foreground": "#C586C0"
+          },
+          "collieForLoop": {
+            "foreground": "#C586C0",
+            "fontStyle": "italic"
           },
           "colliePropsKeyword": {
-            "foreground": "#C678DD"
+            "foreground": "#B39DF3"
           },
           "colliePropsField": {
-            "foreground": "#d59750"
+            "foreground": "#E0AF68"
+          },
+          "colliePropsFieldFn": {
+            "foreground": "#9ECE6A"
+          },
+          "collieEventHandler": {
+            "foreground": "#6CB6FF",
+            "fontStyle": "bold"
           },
           "collieInterpolation": {
-            "foreground": "#e5d77b",
+            "foreground": "#FFD580",
             "fontStyle": "bold"
+          },
+          "collieSingleBraceInterpolation": {
+            "foreground": "#E6C27A"
+          },
+          "collieExpressionLine": {
+            "foreground": "#AAB2BF"
           },
           "colliePipeText": {
             "foreground": "#D4D4D4"
           },
           "collieComment": {
-            "foreground": "#5C6370",
+            "foreground": "#636B78",
             "fontStyle": "italic"
           },
-          "collieClassesKeyword": {
-            "foreground": "#C678DD"
-          },
-          "collieClassAliasName": {
-            "foreground": "#E06C75"
-          },
-          "collieClassAliasUsage": {
-            "foreground": "#56B6C2"
-          },
           "collieIdKeyword": {
-            "foreground": "#C678DD"
+            "foreground": "#C586C0"
           },
           "collieIdValue": {
-            "foreground": "#E06C75",
+            "foreground": "#F26D6D",
             "fontStyle": "bold"
           }
         }
