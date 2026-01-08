@@ -4,15 +4,15 @@ export interface IrElement {
   readonly kind: 'element';
   readonly tagName: string;
   readonly classes: readonly string[];
-  readonly props: readonly (IrProp | IrExpression)[];
+  readonly attributes: readonly (IrAttribute | IrExpression)[];
   readonly children: readonly IrNode[];
 }
 
-export interface IrProp {
-  readonly kind: 'prop';
+export interface IrAttribute {
+  readonly kind: 'attribute';
   readonly name: string;
   /**
-   * Omit value to represent boolean props or shorthand presence.
+   * Omit value to represent boolean attributes or shorthand presence.
    * When present, keep the original textual form (quoted string, {expr}, etc.).
    */
   readonly value?: string;
@@ -47,7 +47,7 @@ export function createIrElement(
   tagName: string,
   options: {
     classes?: Iterable<string>;
-    props?: Iterable<IrProp | IrExpression>;
+    attributes?: Iterable<IrAttribute | IrExpression>;
     children?: Iterable<IrNode>;
   } = {}
 ): IrElement {
@@ -56,14 +56,14 @@ export function createIrElement(
     kind: 'element',
     tagName,
     classes,
-    props: Array.from(options.props ?? []),
+    attributes: Array.from(options.attributes ?? []),
     children: Array.from(options.children ?? [])
   };
 }
 
-export function createIrProp(name: string, value?: string): IrProp {
+export function createIrAttribute(name: string, value?: string): IrAttribute {
   return {
-    kind: 'prop',
+    kind: 'attribute',
     name,
     value
   };

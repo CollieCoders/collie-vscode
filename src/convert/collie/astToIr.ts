@@ -23,7 +23,7 @@ export function convertCollieAstToIr(root: RootNode): readonly IrNode[] {
   const aliasEnv = buildAliasEnvironment(root.classAliases);
 
   if (root.inputs) {
-    nodes.push(createIrExpression(buildPropsComment(root.inputs)));
+    nodes.push(createIrExpression(buildInputsComment(root.inputs)));
   }
 
   nodes.push(...convertNodes(root.children, aliasEnv));
@@ -117,15 +117,15 @@ function isTextChunk(part: TextPart): part is Extract<TextPart, { type: 'text' }
   return part.type === 'text';
 }
 
-function buildPropsComment(props: InputsDecl): string {
-  if (!props.fields.length) {
-    return '/* Collie props block present. Add TypeScript props manually. */';
+function buildInputsComment(inputs: InputsDecl): string {
+  if (!inputs.fields.length) {
+    return '/* Collie inputs block present. Add TypeScript inputs manually. */';
   }
 
-  const summary = props.fields
+  const summary = inputs.fields
     .map(field => `${field.name}${field.optional ? '?' : ''}: ${field.typeText}`)
     .join(', ');
-  return `/* Collie props: ${summary} */`;
+  return `/* Collie inputs: ${summary} */`;
 }
 
 function createFallbackComment(reason: string) {

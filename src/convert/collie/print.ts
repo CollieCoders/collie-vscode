@@ -1,4 +1,4 @@
-import type { IrConditional, IrElement, IrExpression, IrNode, IrProp, IrText } from '../ir/nodes';
+import type { IrAttribute, IrConditional, IrElement, IrExpression, IrNode, IrText } from '../ir/nodes';
 
 export interface ColliePrintOptions {
   indentSize?: number;
@@ -69,7 +69,7 @@ function printNode(node: IrNode, level: number, ctx: PrinterContext, out: string
 
 function printElement(node: IrElement, level: number, ctx: PrinterContext, out: string[]) {
   const indent = createIndent(level, ctx);
-  let line = indent + formatSelector(node, ctx) + formatProps(node.props, ctx);
+  let line = indent + formatSelector(node, ctx) + formatAttributes(node.attributes, ctx);
 
   const inlineChild = getInlineChild(node.children, ctx);
   if (inlineChild) {
@@ -96,25 +96,25 @@ function formatSelector(node: IrElement, ctx: PrinterContext) {
   return node.tagName + node.classes.map(cls => ` .${cls}`).join('');
 }
 
-function formatProps(props: readonly (IrProp | IrExpression)[], ctx: PrinterContext) {
-  if (!props.length) {
+function formatAttributes(attributes: readonly (IrAttribute | IrExpression)[], ctx: PrinterContext) {
+  if (!attributes.length) {
     return '';
   }
 
   const parts: string[] = [];
-  for (const prop of props) {
-    if (prop.kind === 'prop') {
-      const value = prop.value !== undefined ? `=${normalizePropValue(prop.value)}` : '';
-      parts.push(`${prop.name}${value}`);
+  for (const attr of attributes) {
+    if (attr.kind === 'attribute') {
+      const value = attr.value !== undefined ? `=${normalizeAttributeValue(attr.value)}` : '';
+      parts.push(`${attr.name}${value}`);
       continue;
     }
-    parts.push(formatExpressionPayload(prop.expressionText));
+    parts.push(formatExpressionPayload(attr.expressionText));
   }
 
   return `(${parts.join(' ')})`;
 }
 
-function normalizePropValue(value: string): string {
+function normalizeAttributeValue(value: string): string {
   // If the value contains curly braces (expression), normalize its whitespace
   if (value.startsWith('{') && value.endsWith('}')) {
     const inner = value.slice(1, -1);

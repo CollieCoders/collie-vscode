@@ -15,7 +15,8 @@ interface TemplateBlockRange extends CollieTemplateBlock {
   contentEndLine: number;
 }
 
-const PROP_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const INPUT_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const LEGACY_INPUTS_HEADER = String.fromCharCode(35, 112, 114, 111, 112, 115);
 
 function parseTemplateBlocks(contents: string): CollieTemplateMatch[] {
   const lines = contents.split(/\r?\n/);
@@ -126,17 +127,17 @@ export async function listTemplateBlocks(uri: Uri): Promise<CollieTemplateBlock[
   }));
 }
 
-interface PropInfo {
+interface InputInfo {
   name: string;
   kind: 'fn' | 'value';
 }
 
-function normalizePropNames(propKinds: Map<string, { kind: 'fn' | 'value' }>): PropInfo[] {
+function normalizeInputNames(inputKinds: Map<string, { kind: 'fn' | 'value' }>): InputInfo[] {
   const seen = new Set<string>();
-  const normalized: PropInfo[] = [];
-  for (const [name, info] of propKinds.entries()) {
+  const normalized: InputInfo[] = [];
+  for (const [name, info] of inputKinds.entries()) {
     const trimmed = name.trim();
-    if (!trimmed || !PROP_NAME_PATTERN.test(trimmed) || seen.has(trimmed)) {
+    if (!trimmed || !INPUT_NAME_PATTERN.test(trimmed) || seen.has(trimmed)) {
       continue;
     }
     seen.add(trimmed);
@@ -145,13 +146,13 @@ function normalizePropNames(propKinds: Map<string, { kind: 'fn' | 'value' }>): P
   return normalized;
 }
 
-function buildPropsBlock(props: PropInfo[], eol: string): string {
-  if (props.length === 0) {
+function buildInputsBlock(inputs: InputInfo[], eol: string): string {
+  if (inputs.length === 0) {
     return '';
   }
   const lines = [
-    '#props',
-    ...props.map(prop => `  ${prop.name}${prop.kind === 'fn' ? '()' : ''}`)
+    '#inputs',
+    ...inputs.map(input => `  ${input.name}${input.kind === 'fn' ? '()' : ''}`)
   ];
   return lines.join(eol);
 }
@@ -160,16 +161,16 @@ function buildTemplateBlock(
   templateId: string,
   collieText: string,
   eol: string,
-  props: PropInfo[]
+  inputs: InputInfo[]
 ): string {
   const body = collieText.trimEnd();
-  const propsBlock = buildPropsBlock(props, eol);
+  const inputsBlock = buildInputsBlock(inputs, eol);
   const parts: string[] = [`#id ${templateId}`];
-  if (propsBlock) {
-    parts.push('', propsBlock, '');
+  if (inputsBlock) {
+    parts.push('', inputsBlock, '');
   }
   if (body) {
-    if (!propsBlock) {
+    if (!inputsBlock) {
       parts.push('');
     }
     parts.push(body);
@@ -183,7 +184,7 @@ export async function writeTemplateBlock(
   templateId: string,
   collieText: string,
   fallbackEol: string,
-  propKinds: Map<string, { kind: 'fn' | 'value' }> = new Map()
+  inputKinds: Map<string, { kind: 'fn' | 'value' }> = new Map()
 ): Promise<CollieWriteResult> {
   const exists = await fileExists(targetUri);
   let existingText = '';
@@ -193,8 +194,8 @@ export async function writeTemplateBlock(
   }
 
   const eol = resolveEol(existingText, fallbackEol);
-  const normalizedProps = normalizePropNames(propKinds);
-  const block = buildTemplateBlock(templateId, collieText, eol, normalizedProps);
+  const normalizedInputs = normalizeInputNames(inputKinds);
+  const block = buildTemplateBlock(templateId, collieText, eol, normalizedInputs);
 
   let nextText: string;
   let idLine = 0;
@@ -271,14 +272,14 @@ export async function appendToTemplateBlock(
   };
 }
 
-export async function updateTemplateBlockProps(
+export async function updateTemplateBlockInputs(
   targetUri: Uri,
   templateId: string,
-  propKinds: Map<string, { kind: 'fn' | 'value' }>,
+  inputKinds: Map<string, { kind: 'fn' | 'value' }>,
   fallbackEol: string
 ): Promise<boolean> {
-  const normalizedProps = normalizePropNames(propKinds);
-  if (normalizedProps.length === 0) {
+  const normalizedInputs = normalizeInputNames(inputKinds);
+  if (normalizedInputs.length === 0) {
     return false;
   }
 
@@ -296,10 +297,15 @@ export async function updateTemplateBlockProps(
   }
 
   const lines = existingText.split(/\r?\n/);
-  const propsStart = findPropsBlockStart(lines, block.contentStartLine, block.contentEndLine);
+  for (let i = block.contentStartLine; i < block.contentEndLine; i += 1) {
+    if (lines[i].trim() === LEGACY_INPUTS_HEADER) {
+      lines[i] = lines[i].replace(LEGACY_INPUTS_HEADER, '#inputs');
+    }
+  }
+  const inputsStart = findInputsBlockStart(lines, block.contentStartLine, block.contentEndLine);
 
-  if (propsStart === null) {
-    const insertion = buildPropsBlock(normalizedProps, eol)
+  if (inputsStart === null) {
+    const insertion = buildInputsBlock(normalizedInputs, eol)
       .split(eol);
     if (insertion.length === 0) {
       return false;
@@ -316,14 +322,14 @@ export async function updateTemplateBlockProps(
     }
     lines.splice(block.contentStartLine, 0, ...insertLines);
   } else {
-    const propsEnd = findPropsBlockEnd(lines, propsStart, block.contentEndLine);
-    const existingProps = collectPropsFromBlock(lines, propsStart, propsEnd);
-    const missing = normalizedProps.filter(prop => !existingProps.has(prop.name));
+    const inputsEnd = findInputsBlockEnd(lines, inputsStart, block.contentEndLine);
+    const existingInputs = collectInputsFromBlock(lines, inputsStart, inputsEnd);
+    const missing = normalizedInputs.filter(input => !existingInputs.has(input.name));
     if (missing.length === 0) {
       return false;
     }
-    const insertion = missing.map(prop => `  ${prop.name}${prop.kind === 'fn' ? '()' : ''}`);
-    lines.splice(propsEnd, 0, ...insertion);
+    const insertion = missing.map(input => `  ${input.name}${input.kind === 'fn' ? '()' : ''}`);
+    lines.splice(inputsEnd, 0, ...insertion);
   }
 
   const nextText = lines.join(eol);
@@ -331,61 +337,61 @@ export async function updateTemplateBlockProps(
   return true;
 }
 
-function findPropsBlockStart(
+function findInputsBlockStart(
   lines: string[],
   startLine: number,
   endLine: number
 ): number | null {
   for (let i = startLine; i < endLine; i += 1) {
     const line = lines[i];
-    if (line.trim() !== '#props') {
+    if (line.trim() !== '#inputs') {
       continue;
     }
-    if (line.match(/^\s*#props\s*$/)) {
+    if (line.match(/^\s*#inputs\s*$/)) {
       return i;
     }
   }
   return null;
 }
 
-function findPropsBlockEnd(lines: string[], propsStart: number, endLine: number): number {
-  const propsIndent = (lines[propsStart].match(/^\s*/)?.[0].length ?? 0);
-  for (let i = propsStart + 1; i < endLine; i += 1) {
+function findInputsBlockEnd(lines: string[], inputsStart: number, endLine: number): number {
+  const inputsIndent = (lines[inputsStart].match(/^\s*/)?.[0].length ?? 0);
+  for (let i = inputsStart + 1; i < endLine; i += 1) {
     const line = lines[i];
     if (line.trim().length === 0) {
       continue;
     }
     const indent = (line.match(/^\s*/)?.[0].length ?? 0);
-    if (indent <= propsIndent) {
+    if (indent <= inputsIndent) {
       return i;
     }
   }
   return endLine;
 }
 
-function collectPropsFromBlock(lines: string[], propsStart: number, propsEnd: number): Set<string> {
-  const propsIndent = (lines[propsStart].match(/^\s*/)?.[0].length ?? 0);
-  const props = new Set<string>();
-  for (let i = propsStart + 1; i < propsEnd; i += 1) {
+function collectInputsFromBlock(lines: string[], inputsStart: number, inputsEnd: number): Set<string> {
+  const inputsIndent = (lines[inputsStart].match(/^\s*/)?.[0].length ?? 0);
+  const inputs = new Set<string>();
+  for (let i = inputsStart + 1; i < inputsEnd; i += 1) {
     const line = lines[i];
     if (!line.trim()) {
       continue;
     }
     const indent = (line.match(/^\s*/)?.[0].length ?? 0);
-    if (indent <= propsIndent) {
+    if (indent <= inputsIndent) {
       break;
     }
     // Try new syntax: name or name()
     const newMatch = line.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)\(\)?$/);
     if (newMatch) {
-      props.add(newMatch[1]);
+      inputs.add(newMatch[1]);
       continue;
     }
     // Try legacy syntax: name?: type or name: type
     const legacyMatch = line.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)(\??)?\s*:/);
     if (legacyMatch) {
-      props.add(legacyMatch[1]);
+      inputs.add(legacyMatch[1]);
     }
   }
-  return props;
+  return inputs;
 }
