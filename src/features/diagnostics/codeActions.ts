@@ -23,8 +23,14 @@ const TEMPLATE_ID_PATTERN = /^[A-Za-z][A-Za-z0-9._-]*$/;
 const COLLIE_GLOB = '**/*.collie';
 const COLLIE_EXCLUDE_GLOB = '**/node_modules/**';
 const DEFAULT_INPUT_TYPE = 'unknown';
-const FILE_IGNORE_PATTERN = /^\s*#collie-ignore-file\s+(.+?)\s*$/;
-const LINE_IGNORE_PATTERN = /^\s*#collie-ignore-next-line\s+(.+?)\s*$/;
+const FILE_IGNORE_PATTERNS = [
+  /^\s*\/\/\s*collie-ignore-file\s+(.+?)\s*$/,
+  /^\s*#collie-ignore-file\s+(.+?)\s*$/
+];
+const LINE_IGNORE_PATTERNS = [
+  /^\s*\/\/\s*collie-ignore-next-line\s+(.+?)\s*$/,
+  /^\s*#collie-ignore-next-line\s+(.+?)\s*$/
+];
 
 let templateIndexVersion = 0;
 let cachedTemplateEntriesVersion = -1;
@@ -53,6 +59,16 @@ function getEol(document: TextDocument): string {
 function getIndentSize(): number {
   const config = workspace.getConfiguration('collie');
   return Math.max(1, config.get<number>('format.indentSize', 2));
+}
+
+function matchIgnorePattern(line: string, patterns: RegExp[]): RegExpExecArray | null {
+  for (const pattern of patterns) {
+    const match = pattern.exec(line);
+    if (match) {
+      return match;
+    }
+  }
+  return null;
 }
 
 function invalidateTemplateEntryCache(): void {
@@ -93,8 +109,12 @@ async function getTemplateEntriesById(): Promise<Map<string, TemplateLocation[]>
   return cachedTemplateEntriesPromise;
 }
 
-function findInputsBlock(document: TextDocument): { line: number; indent: number; insertLine: number } | null {
-  for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+function findInputsBlock(
+  document: TextDocument,
+  startLine: number,
+  endLine: number
+): { line: number; indent: number; insertLine: number } | null {
+  for (let lineNumber = startLine; lineNumber < endLine; lineNumber++) {
     const line = document.lineAt(lineNumber);
     if (line.text.trim() !== '#inputs') {
       continue;
@@ -103,7 +123,7 @@ function findInputsBlock(document: TextDocument): { line: number; indent: number
     const inputsIndent = line.firstNonWhitespaceCharacterIndex;
     let insertLine = lineNumber + 1;
 
-    for (let i = lineNumber + 1; i < document.lineCount; i++) {
+    for (let i = lineNumber + 1; i < endLine; i++) {
       const nextLine = document.lineAt(i);
       const trimmed = nextLine.text.trim();
 
@@ -152,8 +172,12 @@ function hasInputDeclarationInBlock(
   return false;
 }
 
-function findInsertLineForNewInputsBlock(document: TextDocument): number {
-  for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+function findInsertLineForNewInputsBlock(
+  document: TextDocument,
+  startLine: number,
+  endLine: number
+): number {
+  for (let lineNumber = startLine; lineNumber < endLine; lineNumber++) {
     const line = document.lineAt(lineNumber);
     const trimmed = line.text.trim();
 
@@ -168,7 +192,7 @@ function findInsertLineForNewInputsBlock(document: TextDocument): number {
     return lineNumber;
   }
 
-  return 0;
+  return startLine;
 }
 
 function getInsertPosition(
@@ -245,7 +269,9 @@ function buildAddInputDeclarationAction(
   diagnostic: Diagnostic,
   inputName: string
 ): CodeAction | null {
-  const inputsBlock = findInputsBlock(document);
+  const diagnosticLine = diagnostic.range.start.line;
+  const sectionBounds = findSectionBounds(document, diagnosticLine);
+  const inputsBlock = findInputsBlock(document, sectionBounds.startLine, sectionBounds.endLine);
   if (inputsBlock && hasInputDeclarationInBlock(document, inputsBlock, inputName)) {
     return null;
   }
@@ -261,7 +287,7 @@ function buildAddInputDeclarationAction(
     insertLine = inputsBlock.insertLine;
     insertText = `${inputLine}${eol}`;
   } else {
-    insertLine = findInsertLineForNewInputsBlock(document);
+    insertLine = findInsertLineForNewInputsBlock(document, sectionBounds.startLine, sectionBounds.endLine);
     insertText = `#inputs${eol}${inputLine}${eol}${eol}`;
   }
 
@@ -275,10 +301,30 @@ function buildAddInputDeclarationAction(
   return action;
 }
 
+function findSectionBounds(
+  document: TextDocument,
+  startLine: number
+): { startLine: number; endLine: number } {
+  const nearest = findNearestIdDirective(document, startLine);
+  const sectionStartLine = nearest?.line ?? 0;
+  let sectionEndLine = document.lineCount;
+
+  for (let lineNumber = sectionStartLine + 1; lineNumber < document.lineCount; lineNumber++) {
+    const line = document.lineAt(lineNumber);
+    const trimmed = line.text.trim();
+    if (ID_DIRECTIVE_PATTERN.test(trimmed) && line.firstNonWhitespaceCharacterIndex === 0) {
+      sectionEndLine = lineNumber;
+      break;
+    }
+  }
+
+  return { startLine: sectionStartLine, endLine: sectionEndLine };
+}
+
 function hasFileIgnoreDirective(document: TextDocument, code: string): boolean {
   for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
     const line = document.lineAt(lineNumber).text;
-    const match = FILE_IGNORE_PATTERN.exec(line);
+    const match = matchIgnorePattern(line, FILE_IGNORE_PATTERNS);
     if (match) {
       const codes = match[1].trim().split(/\s+/);
       if (codes.includes(code)) {
@@ -294,7 +340,7 @@ function hasLineIgnoreDirective(document: TextDocument, lineNumber: number, code
     return false;
   }
   const previousLine = document.lineAt(lineNumber - 1).text;
-  const match = LINE_IGNORE_PATTERN.exec(previousLine);
+  const match = matchIgnorePattern(previousLine, LINE_IGNORE_PATTERNS);
   if (match) {
     const codes = match[1].trim().split(/\s+/);
     return codes.includes(code);
@@ -317,7 +363,7 @@ function buildIgnoreOnLineAction(
   const targetLine = document.lineAt(diagnosticLine);
   const indent = ' '.repeat(targetLine.firstNonWhitespaceCharacterIndex);
   const eol = getEol(document);
-  const directiveText = `${indent}#collie-ignore-next-line ${code}${eol}`;
+  const directiveText = `${indent}// collie-ignore-next-line ${code}${eol}`;
 
   const edit = new WorkspaceEdit();
   edit.insert(document.uri, targetLine.range.start, directiveText);
@@ -363,7 +409,7 @@ function buildIgnoreInFileAction(
     break;
   }
 
-  const directiveText = `#collie-ignore-file ${code}${eol}`;
+  const directiveText = `// collie-ignore-file ${code}${eol}`;
   const { position, prefix } = getInsertPosition(document, insertLine);
   
   const edit = new WorkspaceEdit();

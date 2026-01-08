@@ -2,7 +2,7 @@ import { basename } from 'path';
 import type { TextDocument } from 'vscode';
 import { DocumentSymbol, languages, Range, SymbolKind } from 'vscode';
 import type { FeatureContext } from '../types';
-import type { ElementNode, Node, ConditionalNode, ConditionalBranch, ForLoopNode, InputsDecl } from '../../format/parser/ast';
+import type { ElementNode, Node, ConditionalNode, ConditionalBranch, ForLoopNode, InputsDecl, RootNode } from '../../format/parser/ast';
 import type { SourceSpan } from '../../format/parser/diagnostics';
 import { getParsedDocument } from '../../lang/cache';
 import { listByFile } from '../../lang/templateIndex';
@@ -132,22 +132,18 @@ function spanWithinRange(document: TextDocument, span: SourceSpan | undefined, r
 
 function buildTemplateChildren(
   document: TextDocument,
-  parsed: ReturnType<typeof getParsedDocument>,
-  range: Range
+  section: RootNode
 ): DocumentSymbol[] {
   const children: DocumentSymbol[] = [];
 
-  if (parsed.ast.inputs && spanWithinRange(document, parsed.ast.inputs.span, range)) {
-    const inputsSymbol = buildInputsSymbol(document, parsed.ast.inputs);
+  if (section.inputs) {
+    const inputsSymbol = buildInputsSymbol(document, section.inputs);
     if (inputsSymbol) {
       children.push(inputsSymbol);
     }
   }
 
-  for (const child of parsed.ast.children) {
-    if (!spanWithinRange(document, child.span, range)) {
-      continue;
-    }
+  for (const child of section.children) {
     const symbol = buildNodeSymbol(document, child);
     if (symbol) {
       children.push(symbol);
@@ -163,18 +159,21 @@ function buildDocumentSymbols(document: TextDocument): DocumentSymbol[] {
 
   if (templates.length === 0) {
     const children: DocumentSymbol[] = [];
+    const section = parsed.ast.sections[0];
 
-    if (parsed.ast.inputs) {
-      const inputsSymbol = buildInputsSymbol(document, parsed.ast.inputs);
+    if (section?.inputs) {
+      const inputsSymbol = buildInputsSymbol(document, section.inputs);
       if (inputsSymbol) {
         children.push(inputsSymbol);
       }
     }
 
-    for (const child of parsed.ast.children) {
-      const symbol = buildNodeSymbol(document, child);
-      if (symbol) {
-        children.push(symbol);
+    if (section) {
+      for (const child of section.children) {
+        const symbol = buildNodeSymbol(document, child);
+        if (symbol) {
+          children.push(symbol);
+        }
       }
     }
 
@@ -191,11 +190,25 @@ function buildDocumentSymbols(document: TextDocument): DocumentSymbol[] {
       template.blockRange,
       template.idRange
     );
-    symbol.children = buildTemplateChildren(document, parsed, template.blockRange);
+    const section = findSectionByRange(document, parsed.ast.sections, template.blockRange);
+    symbol.children = section ? buildTemplateChildren(document, section) : [];
     symbols.push(symbol);
   }
 
   return symbols;
+}
+
+function findSectionByRange(
+  document: TextDocument,
+  sections: RootNode[],
+  range: Range
+): RootNode | undefined {
+  for (const section of sections) {
+    if (spanWithinRange(document, section.span, range)) {
+      return section;
+    }
+  }
+  return sections[0];
 }
 
 export function registerDocumentSymbols(context: FeatureContext) {

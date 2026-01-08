@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
-import type { ConditionalBranch, ConditionalNode, RootNode } from './ast';
+import type { ConditionalBranch, ConditionalNode, DocumentNode, RootNode } from './ast';
 import { type Diagnostic, createSpan } from './diagnostics';
 import {
   cleanupConditionalChains,
@@ -29,20 +29,82 @@ import type { BranchLocation, ConditionalChainState, ParseResult, StackItem } fr
 
 export function parse(source: string): ParseResult {
   const diagnostics: Diagnostic[] = [];
-  const root: RootNode = { type: 'Root', children: [] };
-  const stack: StackItem[] = [{ node: root, level: -1 }];
-  let inputsBlockLevel: number | null = null;
-  let classesBlockLevel: number | null = null;
-  const conditionalChains = new Map<number, ConditionalChainState>();
-  const branchLocations: BranchLocation[] = [];
+  const document: DocumentNode = { type: 'Document', sections: [] };
+  const allBranchLocations: BranchLocation[] = [];
   const legacyDirective = String.fromCharCode(112, 114, 111, 112, 115);
   const legacyHashDirective = `${String.fromCharCode(35)}${legacyDirective}`;
 
+  interface SectionState {
+    root: RootNode;
+    stack: StackItem[];
+    inputsBlockLevel: number | null;
+    classesBlockLevel: number | null;
+    conditionalChains: Map<number, ConditionalChainState>;
+    branchLocations: BranchLocation[];
+    hasTemplateNodes: boolean;
+  }
+
+  let sectionState: SectionState | null = null;
+  let missingIdDiagnosticEmitted = false;
+
   const normalized = source.replace(/\r\n?/g, '\n');
   const lines = normalized.split('\n');
-  root.span = createSpan(1, 1, Math.max(normalized.length, 1), 0);
 
   let offset = 0;
+
+  const startSection = (lineNumber: number, lineOffset: number): SectionState => {
+    const root: RootNode = { type: 'Root', children: [] };
+    root.span = {
+      start: { line: lineNumber, col: 1, offset: lineOffset },
+      end: { line: lineNumber, col: 1, offset: lineOffset }
+    };
+    document.sections.push(root);
+    return {
+      root,
+      stack: [{ node: root, level: -1 }],
+      inputsBlockLevel: null,
+      classesBlockLevel: null,
+      conditionalChains: new Map<number, ConditionalChainState>(),
+      branchLocations: [],
+      hasTemplateNodes: false
+    };
+  };
+
+  const finalizeSection = (
+    state: SectionState,
+    endLine: number,
+    endCol: number,
+    endOffset: number
+  ): void => {
+    if (!state.root.span) {
+      state.root.span = {
+        start: { line: endLine, col: endCol, offset: endOffset },
+        end: { line: endLine, col: endCol, offset: endOffset }
+      };
+    } else {
+      state.root.span.end = { line: endLine, col: endCol, offset: endOffset };
+    }
+    allBranchLocations.push(...state.branchLocations);
+  };
+
+  const ensureSectionForContent = (lineNumber: number, lineOffset: number): SectionState => {
+    if (!sectionState) {
+      sectionState = startSection(lineNumber, lineOffset);
+      if (!missingIdDiagnosticEmitted) {
+        pushDiag(
+          diagnostics,
+          'COLLIE402',
+          'ID directive must appear before inputs, classes, and any template nodes.',
+          lineNumber,
+          1,
+          lineOffset,
+          1
+        );
+        missingIdDiagnosticEmitted = true;
+      }
+    }
+    return sectionState;
+  };
 
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i];
@@ -86,35 +148,9 @@ export function parse(source: string): ParseResult {
 
     let level = indent / 2;
 
-    if (inputsBlockLevel !== null && level <= inputsBlockLevel) {
-      inputsBlockLevel = null;
-    }
-    if (classesBlockLevel !== null && level <= classesBlockLevel) {
-      classesBlockLevel = null;
-    }
-
-    const top = stack[stack.length - 1];
-    if (level > top.level + 1) {
-      pushDiag(
-        diagnostics,
-        'COLLIE003',
-        'Indentation jumped more than one level.',
-        lineNumber,
-        indent + 1,
-        lineOffset
-      );
-      level = top.level + 1;
-    }
-
-    while (stack.length > 1 && stack[stack.length - 1].level >= level) {
-      stack.pop();
-    }
-
-    cleanupConditionalChains(conditionalChains, level);
-    const isElseIfLine = /^@elseIf\b/.test(trimmed);
-    const isElseLine = /^@else\b/.test(trimmed) && !isElseIfLine;
-    if (!isElseIfLine && !isElseLine) {
-      conditionalChains.delete(level);
+    const isCommentLine = trimmed.startsWith('//') || trimmed.startsWith('#collie-ignore-');
+    if (isCommentLine) {
+      continue;
     }
 
     // Parse ID directive (case-insensitive, supports multiple forms)
@@ -131,17 +167,12 @@ export function parse(source: string): ParseResult {
           lineOffset,
           trimmed.length
         );
-      } else if (root.children.length > 0 || root.inputs || root.classAliases) {
-        pushDiag(
-          diagnostics,
-          'COLLIE402',
-          'ID directive must appear before inputs, classes, and any template nodes.',
-          lineNumber,
-          indent + 1,
-          lineOffset,
-          trimmed.length
-        );
       } else {
+        if (sectionState) {
+          finalizeSection(sectionState, lineNumber, 1, lineOffset);
+        }
+        sectionState = startSection(lineNumber, lineOffset);
+        const root = sectionState.root;
         root.rawId = rawValue;
         // Normalize: strip trailing -collie
         let normalized = rawValue;
@@ -152,6 +183,42 @@ export function parse(source: string): ParseResult {
         root.idSpan = createSpan(lineNumber, indent + 1, trimmed.length, lineOffset);
       }
       continue;
+    }
+
+    const active = ensureSectionForContent(lineNumber, lineOffset);
+
+    if (active.inputsBlockLevel !== null && level <= active.inputsBlockLevel) {
+      active.inputsBlockLevel = null;
+    }
+    if (active.classesBlockLevel !== null && level <= active.classesBlockLevel) {
+      active.classesBlockLevel = null;
+    }
+
+    const inInputsBlock = active.inputsBlockLevel !== null && level > active.inputsBlockLevel;
+    const inClassesBlock = active.classesBlockLevel !== null && level > active.classesBlockLevel;
+
+    const top = active.stack[active.stack.length - 1];
+    if (!isCommentLine && !inInputsBlock && !inClassesBlock && level > top.level + 1) {
+      pushDiag(
+        diagnostics,
+        'COLLIE003',
+        'Indentation jumped more than one level.',
+        lineNumber,
+        indent + 1,
+        lineOffset
+      );
+      level = top.level + 1;
+    }
+
+    while (active.stack.length > 1 && active.stack[active.stack.length - 1].level >= level) {
+      active.stack.pop();
+    }
+
+    cleanupConditionalChains(active.conditionalChains, level);
+    const isElseIfLine = /^@elseIf\b/.test(trimmed);
+    const isElseLine = /^@else\b/.test(trimmed) && !isElseIfLine;
+    if (!isElseIfLine && !isElseLine) {
+      active.conditionalChains.delete(level);
     }
 
     if (trimmed === legacyDirective || trimmed === legacyHashDirective || trimmed === 'inputs') {
@@ -168,6 +235,9 @@ export function parse(source: string): ParseResult {
     }
 
     if (trimmed === '#inputs') {
+      if (!sectionState) {
+        sectionState = startSection(lineNumber, lineOffset);
+      }
       if (level !== 0) {
         pushDiag(
           diagnostics,
@@ -178,7 +248,7 @@ export function parse(source: string): ParseResult {
           lineOffset,
           trimmed.length
         );
-      } else if (root.children.length > 0 || root.inputs) {
+      } else if (sectionState.hasTemplateNodes || sectionState.root.inputs) {
         pushDiag(
           diagnostics,
           'COLLIE101',
@@ -189,16 +259,19 @@ export function parse(source: string): ParseResult {
           trimmed.length
         );
       } else {
-        root.inputs = {
+        sectionState.root.inputs = {
           fields: [],
           span: createSpan(lineNumber, indent + 1, Math.max(trimmed.length, 1), lineOffset)
         };
-        inputsBlockLevel = level;
+        sectionState.inputsBlockLevel = level;
       }
       continue;
     }
 
     if (trimmed === 'classes') {
+      if (!sectionState) {
+        sectionState = startSection(lineNumber, lineOffset);
+      }
       if (level !== 0) {
         pushDiag(
           diagnostics,
@@ -209,7 +282,7 @@ export function parse(source: string): ParseResult {
           lineOffset,
           trimmed.length
         );
-      } else if (root.children.length > 0) {
+      } else if (sectionState.hasTemplateNodes) {
         pushDiag(
           diagnostics,
           'COLLIE302',
@@ -221,24 +294,24 @@ export function parse(source: string): ParseResult {
         );
       } else {
         const headerSpan = createSpan(lineNumber, indent + 1, Math.max(trimmed.length, 1), lineOffset);
-        if (!root.classAliases) {
-          root.classAliases = {
+        if (!sectionState.root.classAliases) {
+          sectionState.root.classAliases = {
             aliases: [],
             span: headerSpan
           };
-        } else if (root.classAliases.span) {
-          root.classAliases.span = {
-            ...root.classAliases.span,
+        } else if (sectionState.root.classAliases.span) {
+          sectionState.root.classAliases.span = {
+            ...sectionState.root.classAliases.span,
             end: headerSpan.end
           };
         }
-        classesBlockLevel = level;
+        sectionState.classesBlockLevel = level;
       }
       continue;
     }
 
-    if (inputsBlockLevel !== null && level > inputsBlockLevel) {
-      if (level !== inputsBlockLevel + 1) {
+    if (sectionState.inputsBlockLevel !== null && level > sectionState.inputsBlockLevel) {
+      if (level !== sectionState.inputsBlockLevel + 1) {
         pushDiag(
           diagnostics,
           'COLLIE102',
@@ -251,14 +324,14 @@ export function parse(source: string): ParseResult {
       }
 
       const field = parseInputsField(trimmed, lineNumber, indent + 1, lineOffset, diagnostics);
-      if (field && root.inputs) {
-        root.inputs.fields.push(field);
+      if (field && sectionState.root.inputs) {
+        sectionState.root.inputs.fields.push(field);
       }
       continue;
     }
 
-    if (classesBlockLevel !== null && level > classesBlockLevel) {
-      if (level !== classesBlockLevel + 1) {
+    if (sectionState.classesBlockLevel !== null && level > sectionState.classesBlockLevel) {
+      if (level !== sectionState.classesBlockLevel + 1) {
         pushDiag(
           diagnostics,
           'COLLIE303',
@@ -278,13 +351,13 @@ export function parse(source: string): ParseResult {
         diagnostics
       );
       if (alias) {
-        root.classAliases ??= { aliases: [] };
-        root.classAliases.aliases.push(alias);
+        sectionState.root.classAliases ??= { aliases: [] };
+        sectionState.root.classAliases.aliases.push(alias);
       }
       continue;
     }
 
-    const parent = stack[stack.length - 1].node;
+    const parent = sectionState.stack[sectionState.stack.length - 1].node;
 
     if (trimmed.startsWith('@for')) {
       const forLoop = parseForLoop(
@@ -297,8 +370,9 @@ export function parse(source: string): ParseResult {
       if (!forLoop) {
         continue;
       }
+      sectionState.hasTemplateNodes = true;
       parent.children.push(forLoop);
-      stack.push({ node: createForLoopContext(forLoop), level });
+      sectionState.stack.push({ node: createForLoopContext(forLoop), level });
       continue;
     }
 
@@ -317,9 +391,10 @@ export function parse(source: string): ParseResult {
       const chain: ConditionalNode = { type: 'Conditional', branches: [], span: header.span };
       const branch: ConditionalBranch = { test: header.test, body: [], span: header.span };
       chain.branches.push(branch);
+      sectionState.hasTemplateNodes = true;
       parent.children.push(chain);
-      conditionalChains.set(level, { node: chain, level, hasElse: false });
-      branchLocations.push({
+      sectionState.conditionalChains.set(level, { node: chain, level, hasElse: false });
+      sectionState.branchLocations.push({
         branch,
         span: header.span
       });
@@ -335,13 +410,13 @@ export function parse(source: string): ParseResult {
           branch.body.push(inlineNode);
         }
       } else {
-        stack.push({ node: createConditionalBranchContext(chain, branch), level });
+        sectionState.stack.push({ node: createConditionalBranchContext(chain, branch), level });
       }
       continue;
     }
 
     if (isElseIfLine) {
-      const chain = conditionalChains.get(level);
+      const chain = sectionState.conditionalChains.get(level);
       if (!chain) {
         pushDiag(
           diagnostics,
@@ -379,7 +454,7 @@ export function parse(source: string): ParseResult {
       }
       const branch: ConditionalBranch = { test: header.test, body: [], span: header.span };
       chain.node.branches.push(branch);
-      branchLocations.push({
+      sectionState.branchLocations.push({
         branch,
         span: header.span
       });
@@ -395,13 +470,13 @@ export function parse(source: string): ParseResult {
           branch.body.push(inlineNode);
         }
       } else {
-        stack.push({ node: createConditionalBranchContext(chain.node, branch), level });
+        sectionState.stack.push({ node: createConditionalBranchContext(chain.node, branch), level });
       }
       continue;
     }
 
     if (isElseLine) {
-      const chain = conditionalChains.get(level);
+      const chain = sectionState.conditionalChains.get(level);
       if (!chain) {
         pushDiag(
           diagnostics,
@@ -433,7 +508,7 @@ export function parse(source: string): ParseResult {
       const branch: ConditionalBranch = { test: undefined, body: [], span: header.span };
       chain.node.branches.push(branch);
       chain.hasElse = true;
-      branchLocations.push({
+      sectionState.branchLocations.push({
         branch,
         span: header.span
       });
@@ -449,7 +524,7 @@ export function parse(source: string): ParseResult {
           branch.body.push(inlineNode);
         }
       } else {
-        stack.push({ node: createConditionalBranchContext(chain.node, branch), level });
+        sectionState.stack.push({ node: createConditionalBranchContext(chain.node, branch), level });
       }
       continue;
     }
@@ -457,6 +532,7 @@ export function parse(source: string): ParseResult {
     if (lineContent.startsWith('|')) {
       const textNode = parseTextLine(lineContent, lineNumber, indent + 1, lineOffset, diagnostics);
       if (textNode) {
+        sectionState.hasTemplateNodes = true;
         parent.children.push(textNode);
       }
       continue;
@@ -465,6 +541,7 @@ export function parse(source: string): ParseResult {
     if (lineContent.startsWith('= ')) {
       const exprNode = parseEqualsExpressionLine(lineContent, lineNumber, indent + 1, lineOffset, diagnostics);
       if (exprNode) {
+        sectionState.hasTemplateNodes = true;
         parent.children.push(exprNode);
       }
       continue;
@@ -473,6 +550,7 @@ export function parse(source: string): ParseResult {
     if (lineContent.startsWith('{{')) {
       const exprNode = parseExpressionLine(lineContent, lineNumber, indent + 1, lineOffset, diagnostics);
       if (exprNode) {
+        sectionState.hasTemplateNodes = true;
         parent.children.push(exprNode);
       }
       continue;
@@ -489,11 +567,18 @@ export function parse(source: string): ParseResult {
       continue;
     }
 
+    sectionState.hasTemplateNodes = true;
     parent.children.push(element);
-    stack.push({ node: element, level });
+    sectionState.stack.push({ node: element, level });
   }
 
-  for (const info of branchLocations) {
+  if (sectionState) {
+    const lastLineIndex = Math.max(lines.length - 1, 0);
+    const lastLineLength = lines[lastLineIndex]?.length ?? 0;
+    finalizeSection(sectionState, lastLineIndex + 1, lastLineLength + 1, Math.max(normalized.length, 0));
+  }
+
+  for (const info of allBranchLocations) {
     if (info.branch.body.length === 0) {
       const span = info.span;
       const spanLength = Math.max(span.end.offset - span.start.offset, 1);
@@ -510,10 +595,19 @@ export function parse(source: string): ParseResult {
     }
   }
 
-  if (root.classAliases) {
-    validateClassAliasDefinitions(root.classAliases, diagnostics);
+  for (const section of document.sections) {
+    if (section.classAliases) {
+      validateClassAliasDefinitions(section.classAliases, diagnostics);
+    }
+    validateClassAliasUsages(section, diagnostics);
   }
-  validateClassAliasUsages(root, diagnostics);
 
-  return { root, diagnostics };
+  const lastLineIndex = Math.max(lines.length - 1, 0);
+  const lastLineLength = lines[lastLineIndex]?.length ?? 0;
+  document.span = {
+    start: { line: 1, col: 1, offset: 0 },
+    end: { line: lastLineIndex + 1, col: lastLineLength + 1, offset: Math.max(normalized.length, 0) }
+  };
+
+  return { document, diagnostics };
 }

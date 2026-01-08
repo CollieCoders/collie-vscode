@@ -293,6 +293,10 @@ async function findComponentInputUsages(
 
 async function computeDiagnostics(document: TextDocument, context: FeatureContext): Promise<VSDiagnostic[]> {
   const parsed = getParsedDocument(document);
+  if (parsed.ast.sections.length !== 1) {
+    return [];
+  }
+  const section = parsed.ast.sections[0];
   const componentName = deriveComponentName(document);
   if (!componentName) {
     return [];
@@ -303,8 +307,8 @@ async function computeDiagnostics(document: TextDocument, context: FeatureContex
     return [];
   }
 
-  const declaredInputs = new Set(parsed.ast.inputs?.fields.map(field => field.name) ?? []);
-  const inputsSpan = parsed.ast.inputs?.span;
+  const declaredInputs = new Set(section.inputs?.fields.map(field => field.name) ?? []);
+  const inputsSpan = section.inputs?.span;
 
   const usage = await findComponentInputUsages(folder, componentName, context);
 

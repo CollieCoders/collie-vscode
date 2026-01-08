@@ -95,16 +95,18 @@ function collectTemplateIdDiagnostics(document: TextDocument): Diagnostic[] {
 }
 
 export function parseCollieDocument(document: TextDocument): ParsedDocument {
-  const { root, diagnostics } = parse(document.getText());
+  const { document: parsedDocument, diagnostics } = parse(document.getText());
   const templateDiagnostics = collectTemplateIdDiagnostics(document);
   const combinedDiagnostics = diagnostics.concat(templateDiagnostics);
 
-  if (root.rawId) {
-    root.rawId = undefined;
+  for (const section of parsedDocument.sections) {
+    if (section.rawId) {
+      section.rawId = undefined;
+    }
   }
 
   return {
-    ast: root,
+    ast: parsedDocument,
     diagnostics: combinedDiagnostics,
     version: document.version
   };

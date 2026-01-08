@@ -15,7 +15,7 @@ import { isFeatureFlagEnabled, onDidChangeFeatureFlags } from '../featureFlags';
 import { collectCompilerDiagnostics } from './compilerDiagnostics';
 import { onDidChangeCollieConfig, resolveCollieConfigForDocument } from '../../config/collieConfig';
 import { getCssClassIndexForDocument, getUnknownClassOverrideSetting } from '../css/indexer';
-import type { Node } from '../../format/parser/ast';
+import type { Node, RootNode } from '../../format/parser/ast';
 import { spanToRange } from './helpers/ranges';
 import { SUPPORTED_DIRECTIVES, DIALECT_DIRECTIVE_ALIASES, parseIgnoreDirectives } from './helpers/directives';
 import { invalidateTemplateEntryCache, getTemplateEntriesById } from './helpers/cache';
@@ -76,51 +76,68 @@ function collectParserDiagnostics(document: TextDocument, parsed: ParsedDocument
   return parsed.diagnostics.map(diag => convertParserDiagnostic(document, diag));
 }
 
-function collectDuplicateInputDiagnostics(document: TextDocument): VSDiagnostic[] {
+function collectDuplicateInputDiagnostics(
+  document: TextDocument,
+  parsed: ParsedDocument | null
+): VSDiagnostic[] {
   const diagnostics: VSDiagnostic[] = [];
-  let inInputsBlock = false;
-  let inputsIndent = 0;
-  const seen = new Map<string, Range>();
+  if (!parsed) {
+    return diagnostics;
+  }
 
-  for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
-    const line = document.lineAt(lineNumber);
-    const trimmed = line.text.trim();
-    if (trimmed.length === 0) {
-      continue;
-    }
+  for (const section of parsed.ast.sections) {
+    let inInputsBlock = false;
+    let inputsIndent = 0;
+    const seen = new Map<string, Range>();
+    const startOffset = section.span?.start.offset ?? 0;
+    const endOffset = section.span?.end.offset ?? document.getText().length;
+    const startLine = document.positionAt(startOffset).line;
 
-    const indent = line.firstNonWhitespaceCharacterIndex;
-
-    if (!inInputsBlock) {
-      if (trimmed === '#inputs') {
-        inInputsBlock = true;
-        inputsIndent = indent;
+    for (let lineNumber = startLine; lineNumber < document.lineCount; lineNumber++) {
+      const line = document.lineAt(lineNumber);
+      const lineOffset = document.offsetAt(line.range.start);
+      if (lineOffset >= endOffset) {
+        break;
       }
-      continue;
-    }
 
-    if (indent <= inputsIndent) {
-      inInputsBlock = trimmed === '#inputs';
-      if (inInputsBlock) {
-        inputsIndent = indent;
+      const trimmed = line.text.trim();
+      if (trimmed.length === 0) {
+        continue;
       }
-      continue;
-    }
 
-    const content = line.text.slice(indent);
-    const match = content.match(/^([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:/);
-    if (!match) {
-      continue;
-    }
+      const indent = line.firstNonWhitespaceCharacterIndex;
 
-    const name = match[1];
-    const startColumn = indent;
-    const range = new Range(lineNumber, startColumn, lineNumber, startColumn + name.length);
+      if (!inInputsBlock) {
+        if (trimmed === '#inputs') {
+          inInputsBlock = true;
+          inputsIndent = indent;
+        }
+        continue;
+      }
 
-    if (seen.has(name)) {
-      diagnostics.push(createDiagnostic(range, `Input "${name}" is declared multiple times.`, 'COLLIE401'));
-    } else {
-      seen.set(name, range);
+      if (indent <= inputsIndent) {
+        inInputsBlock = trimmed === '#inputs';
+        if (inInputsBlock) {
+          inputsIndent = indent;
+        }
+        continue;
+      }
+
+      const content = line.text.slice(indent);
+      const match = content.match(/^([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:/);
+      if (!match) {
+        continue;
+      }
+
+      const name = match[1];
+      const startColumn = indent;
+      const range = new Range(lineNumber, startColumn, lineNumber, startColumn + name.length);
+
+      if (seen.has(name)) {
+        diagnostics.push(createDiagnostic(range, `Input "${name}" is declared multiple times.`, 'COLLIE401'));
+      } else {
+        seen.set(name, range);
+      }
     }
   }
 
@@ -233,8 +250,8 @@ function mapUnknownClassSeverity(setting?: string): DiagnosticSeverity {
   }
 }
 
-function buildClassAliasMap(parsed: ParsedDocument): Map<string, string[]> {
-  const aliases = parsed.ast.classAliases?.aliases ?? [];
+function buildClassAliasMap(section: RootNode): Map<string, string[]> {
+  const aliases = section.classAliases?.aliases ?? [];
   const map = new Map<string, string[]>();
   for (const alias of aliases) {
     map.set(alias.name, alias.classes);
@@ -269,7 +286,6 @@ function collectUnknownClassDiagnostics(
     return [];
   }
 
-  const aliasMap = buildClassAliasMap(parsed);
   const diagnostics: VSDiagnostic[] = [];
   const emitted = new Set<string>();
   const severity = mapUnknownClassSeverity(config.parsed.cssUnknownClass);
@@ -295,7 +311,7 @@ function collectUnknownClassDiagnostics(
     diagnostics.push(diagnostic);
   };
 
-  const visitNode = (node: Node) => {
+  const visitNode = (node: Node, aliasMap: Map<string, string[]>) => {
     if (node.type === 'Element') {
       const spans = node.classSpans ?? [];
       node.classes.forEach((token, indexPos) => {
@@ -321,7 +337,7 @@ function collectUnknownClassDiagnostics(
       });
 
       for (const child of node.children) {
-        visitNode(child);
+        visitNode(child, aliasMap);
       }
       return;
     }
@@ -329,7 +345,7 @@ function collectUnknownClassDiagnostics(
     if (node.type === 'Conditional') {
       for (const branch of node.branches) {
         for (const child of branch.body) {
-          visitNode(child);
+          visitNode(child, aliasMap);
         }
       }
       return;
@@ -337,13 +353,16 @@ function collectUnknownClassDiagnostics(
 
     if (node.type === 'ForLoop') {
       for (const child of node.body) {
-        visitNode(child);
+        visitNode(child, aliasMap);
       }
     }
   };
 
-  for (const child of parsed.ast.children) {
-    visitNode(child);
+  for (const section of parsed.ast.sections) {
+    const aliasMap = buildClassAliasMap(section);
+    for (const child of section.children) {
+      visitNode(child, aliasMap);
+    }
   }
 
   return diagnostics;
@@ -421,7 +440,7 @@ async function applyDiagnostics(
   }
 
   diagnostics.push(...collectUnknownDirectiveDiagnostics(document));
-  diagnostics.push(...collectDuplicateInputDiagnostics(document));
+  diagnostics.push(...collectDuplicateInputDiagnostics(document, parsed));
   diagnostics.push(...collectCompilerDiagnostics(document, parsed, config));
   diagnostics.push(...collectUnknownClassDiagnostics(document, parsed, config));
 

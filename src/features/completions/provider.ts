@@ -12,7 +12,7 @@ import {
 } from 'vscode';
 import { dirname, extname, basename } from 'path';
 import type { FeatureContext } from '../types';
-import type { ClassAliasesDecl, Node } from '../../format/parser/ast';
+import type { ClassAliasesDecl, Node, RootNode } from '../../format/parser/ast';
 import type { ParsedDocument } from '../../lang';
 import { getParsedDocument } from '../../lang/cache';
 import { isFeatureFlagEnabled } from '../featureFlags';
@@ -134,12 +134,17 @@ async function buildComponentItems(
   document: TextDocument,
   range: Range,
   context: FeatureContext,
-  parsed: ParsedDocument | null
+  parsed: ParsedDocument | null,
+  offset: number
 ): Promise<CompletionItem[]> {
   try {
     const source = parsed ?? getParsedDocument(document);
+    const section = findSectionByOffset(source.ast.sections, offset);
+    if (!section) {
+      return [];
+    }
     const names = new Set<string>();
-    collectComponentNamesFromAst(source.ast.children, names);
+    collectComponentNamesFromAst(section.children, names);
     const siblingNames = await readSiblingComponents(document);
     for (const name of siblingNames) {
       names.add(name);
@@ -185,12 +190,14 @@ async function provideCompletionItems(document: TextDocument, position: Position
   }
 
   if (word.startsWith('$')) {
-    const aliasItems = createAliasCompletionItems(word, range, parsed?.ast.classAliases);
+    const offset = document.offsetAt(position);
+    const section = parsed ? findSectionByOffset(parsed.ast.sections, offset) : undefined;
+    const aliasItems = createAliasCompletionItems(word, range, section?.classAliases);
     return aliasItems.length ? aliasItems : undefined;
   }
 
   const items: CompletionItem[] = [...createTagItems(range)];
-  items.push(...(await buildComponentItems(document, range, context, parsed)));
+  items.push(...(await buildComponentItems(document, range, context, parsed, document.offsetAt(position))));
   return items;
 }
 
@@ -251,4 +258,15 @@ function createAliasCompletionItems(
       item.sortText = `0_${alias.name}`;
       return item;
     });
+}
+
+function findSectionByOffset(sections: RootNode[], offset: number): RootNode | undefined {
+  for (const section of sections) {
+    const start = section.span?.start.offset ?? 0;
+    const end = section.span?.end.offset ?? Number.MAX_SAFE_INTEGER;
+    if (offset >= start && offset < end) {
+      return section;
+    }
+  }
+  return sections[0];
 }

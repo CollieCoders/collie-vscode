@@ -63,39 +63,40 @@ function updateTemplateIdIndex(document: TextDocument, parsed: ParsedDocument): 
     }
   }
   
-  // Determine the template ID for this document
-  let templateId: string;
-  let rawId: string | undefined;
-  let idSpan: SourceSpan | undefined;
-  let derivedFromFilename: boolean;
-  
-  if (parsed.ast.id) {
-    // Explicit ID directive
-    templateId = parsed.ast.id;
-    rawId = parsed.ast.rawId;
-    idSpan = parsed.ast.idSpan;
-    derivedFromFilename = false;
-  } else {
-    // Derive from filename
-    const basename = path.basename(uri.fsPath, '.collie');
-    let normalized = basename;
-    // Strip trailing -collie from filename too
-    if (normalized.endsWith('-collie')) {
-      normalized = normalized.slice(0, -7);
+  const sectionsWithId = parsed.ast.sections.filter(section => section.id);
+
+  if (sectionsWithId.length > 0) {
+    for (const section of sectionsWithId) {
+      const templateId = section.id ?? '';
+      const entry: TemplateIdEntry = {
+        id: templateId,
+        rawId: section.rawId,
+        uri,
+        idSpan: section.idSpan,
+        derivedFromFilename: false
+      };
+      const existing = templateIdIndex.get(templateId) || [];
+      existing.push(entry);
+      templateIdIndex.set(templateId, existing);
     }
-    templateId = normalized;
-    derivedFromFilename = true;
+    return;
   }
-  
-  // Add to index
+
+  // Derive from filename when no explicit IDs exist in the file.
+  const basename = path.basename(uri.fsPath, '.collie');
+  let normalized = basename;
+  if (normalized.endsWith('-collie')) {
+    normalized = normalized.slice(0, -7);
+  }
+  const templateId = normalized;
   const entry: TemplateIdEntry = {
     id: templateId,
-    rawId,
+    rawId: undefined,
     uri,
-    idSpan,
-    derivedFromFilename
+    idSpan: undefined,
+    derivedFromFilename: true
   };
-  
+
   const existing = templateIdIndex.get(templateId) || [];
   existing.push(entry);
   templateIdIndex.set(templateId, existing);

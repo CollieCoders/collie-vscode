@@ -32,8 +32,8 @@ export function formatDocument(document: TextDocument, options: FormatterOptions
   const fullRange = new Range(document.positionAt(0), document.positionAt(text.length));
 
   try {
-    const { root } = parse(text);
-    const formatted = print(root, resolved);
+    const { document } = parse(text);
+    const formatted = print(document, resolved);
     if (formatted === text) {
       return { edits: [], usedFallback: false };
     }

@@ -2,7 +2,7 @@ import { dirname, join } from 'path';
 import type { TextDocument} from 'vscode';
 import { FileType, Location, Position, Range, Uri, languages, workspace, type DefinitionLink } from 'vscode';
 import type { FeatureContext } from '../types';
-import type { ElementNode, Node } from '../../format/parser/ast';
+import type { ElementNode, Node, RootNode } from '../../format/parser/ast';
 import type { SourceSpan } from '../../format/parser/diagnostics';
 import { getParsedDocument } from '../../lang/cache';
 import { findHtmlAnchorsByLogicalId } from '../../lang/navigation';
@@ -47,8 +47,8 @@ interface ClassReference {
   span: SourceSpan;
 }
 
-function buildAliasMap(parsed: ReturnType<typeof getParsedDocument>): Map<string, string[]> {
-  const aliases = parsed.ast.classAliases?.aliases ?? [];
+function buildAliasMap(section: RootNode): Map<string, string[]> {
+  const aliases = section.classAliases?.aliases ?? [];
   const map = new Map<string, string[]>();
   for (const alias of aliases) {
     map.set(alias.name, alias.classes);
@@ -60,7 +60,11 @@ function findClassReference(
   parsed: ReturnType<typeof getParsedDocument>,
   offset: number
 ): ClassReference | null {
-  const aliasMap = buildAliasMap(parsed);
+  const section = findSectionByOffset(parsed.ast.sections, offset);
+  if (!section) {
+    return null;
+  }
+  const aliasMap = buildAliasMap(section);
 
   const visitNode = (node: Node): ClassReference | null => {
     if (node.type === 'Element') {
@@ -116,7 +120,7 @@ function findClassReference(
     return null;
   };
 
-  for (const child of parsed.ast.children) {
+  for (const child of section.children) {
     const match = visitNode(child);
     if (match) {
       return match;
@@ -138,14 +142,15 @@ async function provideIdDirectiveDefinition(
   try {
     const parsed = getParsedDocument(document);
     const offset = document.offsetAt(position);
+    const section = findSectionByOffset(parsed.ast.sections, offset);
 
     // Check if cursor is on the ID directive value
-    if (!parsed.ast.idSpan || !spanContains(parsed.ast.idSpan, offset)) {
+    if (!section?.idSpan || !spanContains(section.idSpan, offset)) {
       return undefined;
     }
 
     // Get the logical ID
-    const logicalId = parsed.ast.id;
+    const logicalId = section.id;
     if (!logicalId) {
       return undefined;
     }
@@ -383,7 +388,8 @@ async function provideDefinition(document: TextDocument, position: Position, con
     }
 
     // Otherwise, handle component references (existing behavior)
-    const targetNode = findComponentNode(parsed.ast.children, offset);
+    const section = findSectionByOffset(parsed.ast.sections, offset);
+    const targetNode = section ? findComponentNode(section.children, offset) : null;
     if (!targetNode) {
       return undefined;
     }
@@ -398,6 +404,17 @@ async function provideDefinition(document: TextDocument, position: Position, con
     context.logger.error('Collie definition provider failed.', error);
     return undefined;
   }
+}
+
+function findSectionByOffset(sections: RootNode[], offset: number): RootNode | undefined {
+  for (const section of sections) {
+    const start = section.span?.start.offset ?? 0;
+    const end = section.span?.end.offset ?? Number.MAX_SAFE_INTEGER;
+    if (offset >= start && offset < end) {
+      return section;
+    }
+  }
+  return sections[0];
 }
 
 export function registerDefinitionProvider(context: FeatureContext) {

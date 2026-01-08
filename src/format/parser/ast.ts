@@ -23,6 +23,12 @@ export interface RootNode {
   span?: SourceSpan;
 }
 
+export interface DocumentNode {
+  type: 'Document';
+  sections: RootNode[];
+  span?: SourceSpan;
+}
+
 export type Node = ElementNode | TextNode | ExpressionNode | ConditionalNode | ForLoopNode;
 
 export interface ElementNode {

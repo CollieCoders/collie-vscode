@@ -1,6 +1,7 @@
 import type {
   ClassAliasesDecl,
   ConditionalNode,
+  DocumentNode,
   ElementNode,
   ExpressionNode,
   ForLoopNode,
@@ -30,7 +31,7 @@ interface PrinterContext {
   indentUnit: string;
 }
 
-export function print(root: RootNode, options: PrintOptions = {}): string {
+export function print(document: DocumentNode, options: PrintOptions = {}): string {
   const resolved: Required<PrintOptions> = {
     indentSize: options.indentSize ?? DEFAULT_OPTIONS.indentSize,
     preferCompactSelectors: options.preferCompactSelectors ?? DEFAULT_OPTIONS.preferCompactSelectors,
@@ -45,6 +46,18 @@ export function print(root: RootNode, options: PrintOptions = {}): string {
 
   const lines: string[] = [];
 
+  for (const section of document.sections) {
+    if (lines.length > 0) {
+      lines.push('');
+    }
+    lines.push(...printSection(section, ctx));
+  }
+
+  return `${lines.join('\n')}\n`;
+}
+
+function printSection(root: RootNode, ctx: PrinterContext): string[] {
+  const lines: string[] = [];
   const idValue = root.rawId ?? root.id;
   if (idValue) {
     lines.push(`#id ${idValue}`);
@@ -71,7 +84,7 @@ export function print(root: RootNode, options: PrintOptions = {}): string {
     printNode(child, 0, ctx, lines);
   }
 
-  return `${lines.join('\n')  }\n`;
+  return lines;
 }
 
 function printInputs(inputs: InputsDecl, ctx: PrinterContext): string[] {

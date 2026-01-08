@@ -21,16 +21,15 @@ async function openCompiledHtmlPartial(context: FeatureContext) {
   try {
     // Get the logical ID from the document
     const parsed = getParsedDocument(document);
+    const offset = document.offsetAt(activeEditor.selection.active);
+    const section = findSectionByOffset(parsed.ast.sections, offset);
     let logicalId: string;
 
-    if (parsed.ast.id) {
-      // Explicit ID directive
-      logicalId = parsed.ast.id;
+    if (section?.id) {
+      logicalId = section.id;
     } else {
-      // Derive from filename
       const basename = path.basename(document.uri.fsPath, '.collie');
       let normalized = basename;
-      // Strip trailing -collie from filename
       if (normalized.endsWith('-collie')) {
         normalized = normalized.slice(0, -7);
       }
@@ -67,6 +66,17 @@ async function openCompiledHtmlPartial(context: FeatureContext) {
     context.logger.error('Failed to open compiled HTML partial.', error);
     window.showErrorMessage('An error occurred while trying to open the compiled HTML partial.');
   }
+}
+
+function findSectionByOffset(sections: { span?: { start: { offset: number }; end: { offset: number } } }[], offset: number) {
+  for (const section of sections) {
+    const start = section.span?.start.offset ?? 0;
+    const end = section.span?.end.offset ?? Number.MAX_SAFE_INTEGER;
+    if (offset >= start && offset < end) {
+      return section;
+    }
+  }
+  return sections[0];
 }
 
 export function registerNavigationCommands(context: FeatureContext) {

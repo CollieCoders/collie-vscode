@@ -83,38 +83,49 @@ function collectDialectDiagnostics(document: TextDocument): VSDiagnostic[] {
 }
 
 function collectInputUsageDiagnostics(document: TextDocument, parsed: ParsedDocument | null): VSDiagnostic[] {
-  const declaredInputs = new Set(parsed?.ast.inputs?.fields.map(field => field.name) ?? []);
+  if (!parsed) {
+    return [];
+  }
 
   const diagnostics: VSDiagnostic[] = [];
   const text = document.getText();
-  const seen = new Set<string>();
+  const sections = parsed.ast.sections;
 
-  for (const pattern of BARE_INPUT_PATTERNS) {
-    const regex = new RegExp(pattern.source, pattern.flags);
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
-      const name = match[1];
-      if (!name || declaredInputs.has(name) || seen.has(name)) {
-        continue;
+  for (const section of sections) {
+    const declaredInputs = new Set(section.inputs?.fields.map(field => field.name) ?? []);
+    const seen = new Set<string>();
+    const startOffset = section.span?.start.offset ?? 0;
+    const endOffset = section.span?.end.offset ?? text.length;
+    const sectionText = text.slice(startOffset, endOffset);
+
+    for (const pattern of BARE_INPUT_PATTERNS) {
+      const regex = new RegExp(pattern.source, pattern.flags);
+      let match: RegExpExecArray | null;
+      while ((match = regex.exec(sectionText)) !== null) {
+        const name = match[1];
+        if (!name || declaredInputs.has(name) || seen.has(name)) {
+          continue;
+        }
+        seen.add(name);
+
+        const matchText = match[0];
+        const nameOffset = matchText.lastIndexOf(name);
+        const absoluteIndex = startOffset + match.index + nameOffset;
+        const range = rangeFromIndex(document, absoluteIndex, name.length);
+
+        diagnostics.push(
+          createDiagnostic(
+            range,
+            `Input "${name}" is used but not declared in the inputs block.`,
+            DiagnosticSeverity.Warning,
+            'COLLIE501',
+            {
+              kind: 'addInputDeclaration',
+              inputName: name
+            }
+          )
+        );
       }
-      seen.add(name);
-
-      const matchText = match[0];
-      const nameOffset = matchText.lastIndexOf(name);
-      const range = rangeFromIndex(document, match.index + nameOffset, name.length);
-
-      diagnostics.push(
-        createDiagnostic(
-          range,
-          `Input "${name}" is used but not declared in the inputs block.`,
-          DiagnosticSeverity.Warning,
-          'COLLIE501',
-          {
-            kind: 'addInputDeclaration',
-            inputName: name
-          }
-        )
-      );
     }
   }
 

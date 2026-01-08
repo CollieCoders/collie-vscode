@@ -181,23 +181,27 @@ function provideHover(document: TextDocument, position: Position, context: Featu
   try {
     const parsed = getParsedDocument(document);
     const offset = document.offsetAt(position);
+    const section = findSectionByOffset(parsed.ast.sections, offset);
+    if (!section) {
+      return undefined;
+    }
 
-    const directiveHover = getDirectiveHover(offset, parsed.ast.children);
+    const directiveHover = getDirectiveHover(offset, section.children);
     if (directiveHover) {
       return directiveHover;
     }
 
-    const inputsHover = getInputsHover(offset, parsed.ast.inputs);
+    const inputsHover = getInputsHover(offset, section.inputs);
     if (inputsHover) {
       return inputsHover;
     }
 
-    const aliasHover = getClassAliasHover(offset, parsed.ast);
+    const aliasHover = getClassAliasHover(offset, section);
     if (aliasHover) {
       return aliasHover;
     }
 
-    if (hasExpressionHover(offset, parsed.ast.children)) {
+    if (hasExpressionHover(offset, section.children)) {
       return createExpressionHover();
     }
   } catch (error) {
@@ -247,6 +251,17 @@ function getClassAliasHover(offset: number, root: RootNode): Hover | undefined {
   }
 
   return undefined;
+}
+
+function findSectionByOffset(sections: RootNode[], offset: number): RootNode | undefined {
+  for (const section of sections) {
+    const start = section.span?.start.offset ?? 0;
+    const end = section.span?.end.offset ?? Number.MAX_SAFE_INTEGER;
+    if (offset >= start && offset < end) {
+      return section;
+    }
+  }
+  return sections[0];
 }
 
 function findAliasUsageHover(
