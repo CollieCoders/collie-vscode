@@ -15,14 +15,14 @@ export interface PrintOptions {
   indentSize?: number;
   preferCompactSelectors?: boolean;
   spaceAroundPipe?: boolean;
-  normalizePropsSpacing?: boolean;
+  normalizeInputsSpacing?: boolean;
 }
 
 const DEFAULT_OPTIONS: Required<PrintOptions> = {
   indentSize: 2,
   preferCompactSelectors: true,
   spaceAroundPipe: true,
-  normalizePropsSpacing: true
+  normalizeInputsSpacing: true
 };
 
 interface PrinterContext {
@@ -35,7 +35,7 @@ export function print(root: RootNode, options: PrintOptions = {}): string {
     indentSize: options.indentSize ?? DEFAULT_OPTIONS.indentSize,
     preferCompactSelectors: options.preferCompactSelectors ?? DEFAULT_OPTIONS.preferCompactSelectors,
     spaceAroundPipe: options.spaceAroundPipe ?? DEFAULT_OPTIONS.spaceAroundPipe,
-    normalizePropsSpacing: options.normalizePropsSpacing ?? DEFAULT_OPTIONS.normalizePropsSpacing
+    normalizeInputsSpacing: options.normalizeInputsSpacing ?? DEFAULT_OPTIONS.normalizeInputsSpacing
   };
 
   const ctx: PrinterContext = {
@@ -54,7 +54,7 @@ export function print(root: RootNode, options: PrintOptions = {}): string {
   }
 
   if (root.inputs) {
-    lines.push(...printProps(root.inputs, ctx));
+    lines.push(...printInputs(root.inputs, ctx));
     if (root.classAliases || root.children.length) {
       lines.push('');
     }
@@ -74,12 +74,12 @@ export function print(root: RootNode, options: PrintOptions = {}): string {
   return `${lines.join('\n')  }\n`;
 }
 
-function printProps(props: InputsDecl, ctx: PrinterContext): string[] {
-  const lines = ['props'];
-  for (const field of props.fields) {
+function printInputs(inputs: InputsDecl, ctx: PrinterContext): string[] {
+  const lines = ['#inputs'];
+  for (const field of inputs.fields) {
     const indent = createIndent(ctx, 1);
     const optionalFlag = field.optional ? '?' : '';
-    const separator = ctx.options.normalizePropsSpacing ? ': ' : ':';
+    const separator = ctx.options.normalizeInputsSpacing ? ': ' : ':';
     lines.push(`${indent}${field.name}${optionalFlag}${separator}${field.typeText}`);
   }
   return lines;

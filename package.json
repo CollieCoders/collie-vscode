@@ -109,10 +109,10 @@
           "default": true,
           "description": "Insert a space between the pipe symbol and inline/standalone text."
         },
-        "collie.format.normalizePropsSpacing": {
+        "collie.format.normalizeInputsSpacing": {
           "type": "boolean",
           "default": true,
-          "description": "Normalize props declarations to use a single space after the colon."
+          "description": "Normalize inputs declarations to use a single space after the colon."
         },
         "collie.css.diagnostics.unknownClassOverride": {
           "type": "string",
