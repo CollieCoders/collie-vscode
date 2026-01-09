@@ -446,8 +446,8 @@ function buildCollieComponentReplacement(templateId: string, inputNames: string[
   if (normalized.length === 0) {
     return `<Collie id="${templateId}" />`;
   }
-  const attributes = normalized.map(name => `${name}={${name}}`).join(' ');
-  return `<Collie id="${templateId}" ${attributes} />`;
+  const inputs = normalized.join(', ');
+  return `<Collie id="${templateId}" inputs={{ ${inputs} }} />`;
 }
 
 interface InputKindInfo {
