@@ -199,13 +199,19 @@ async function collectIdCollisionDiagnostics(document: TextDocument): Promise<VS
       continue;
     }
 
-    const others = entries.filter(other => other.uri.toString() !== currentUri);
+    const others = entries
+      .filter(other => other.uri.toString() !== currentUri)
+      .sort((a, b) => formatTemplateLocation(a).localeCompare(formatTemplateLocation(b)));
     if (others.length === 0) {
       continue;
     }
 
-    const othersList = others.map(other => `- ${formatTemplateLocation(other)}`).join('\n');
-    const message = `Duplicate Collie template id "${entry.id}".\nAlso defined in:\n${othersList}`;
+    const primary = formatTemplateLocation(others[0]);
+    const extras = others.slice(1);
+    const extrasList = extras.length
+      ? `\nAlso defined in:\n${extras.map(other => `- ${formatTemplateLocation(other)}`).join('\n')}`
+      : '';
+    const message = `Duplicate template id "${entry.id}" also defined in ${primary}.${extrasList}`;
     const diagnostic = new VSDiagnostic(entry.idRange, message, DiagnosticSeverity.Error);
     diagnostic.code = 'COLLIE403';
     diagnostic.source = 'collie';

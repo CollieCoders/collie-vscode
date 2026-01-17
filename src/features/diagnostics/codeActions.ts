@@ -541,6 +541,7 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
       // Extract the template ID from the diagnostic message
       const match =
         diagnostic.message.match(/Duplicate Collie template id "([^"]+)"/) ??
+        diagnostic.message.match(/Duplicate template id "([^"]+)"/) ??
         diagnostic.message.match(/Duplicate #id "([^"]+)"/);
       if (!match) {
         continue;
