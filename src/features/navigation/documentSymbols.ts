@@ -1,0 +1,232 @@
+import { basename } from 'path';
+import type { TextDocument } from 'vscode';
+import { DocumentSymbol, languages, Range, SymbolKind } from 'vscode';
+import type { FeatureContext } from '../types';
+import type { ElementNode, Node, ConditionalNode, ConditionalBranch, ForLoopNode, InputsDecl, RootNode } from '../../format/parser/ast';
+import type { SourceSpan } from '../../format/parser/diagnostics';
+import { getParsedDocument } from '../../lang/cache';
+import { listByFile } from '../../lang/templateIndex';
+import { isFeatureFlagEnabled } from '../featureFlags';
+
+function spanToRange(document: TextDocument, span?: SourceSpan): Range {
+  if (span) {
+    return new Range(document.positionAt(span.start.offset), document.positionAt(span.end.offset));
+  }
+  const start = document.positionAt(0);
+  return new Range(start, start);
+}
+
+function createDocumentRootSymbol(document: TextDocument, children: DocumentSymbol[]): DocumentSymbol[] {
+  const start = document.positionAt(0);
+  const end = document.lineCount === 0 ? start : document.lineAt(document.lineCount - 1).range.end;
+  const range = new Range(start, end);
+  const name = basename(document.fileName) || document.uri.toString();
+  const root = new DocumentSymbol(name, 'Collie template', SymbolKind.Module, range, range);
+  root.children = children;
+  return [root];
+}
+
+function buildInputsSymbol(document: TextDocument, inputs: InputsDecl): DocumentSymbol | null {
+  const range = spanToRange(document, inputs.span);
+  const symbol = new DocumentSymbol('inputs', 'Inputs block', SymbolKind.Field, range, range);
+  return symbol;
+}
+
+function buildElementSymbol(document: TextDocument, node: ElementNode): DocumentSymbol {
+  const detail = node.classes.length ? node.classes.map(cls => `.${cls}`).join('') : '';
+  const range = spanToRange(document, node.span);
+  const symbol = new DocumentSymbol(node.name, detail, SymbolKind.Class, range, range);
+  const children: DocumentSymbol[] = [];
+
+  for (const child of node.children) {
+    const childSymbol = buildNodeSymbol(document, child);
+    if (childSymbol) {
+      children.push(childSymbol);
+    }
+  }
+
+  symbol.children = children;
+  return symbol;
+}
+
+function buildConditionalSymbol(document: TextDocument, node: ConditionalNode): DocumentSymbol {
+  const firstBranch = node.branches[0];
+  const label = firstBranch?.test ? `@if (${firstBranch.test})` : '@if';
+  const range = spanToRange(document, node.span ?? firstBranch?.span);
+  const symbol = new DocumentSymbol(label, 'Conditional block', SymbolKind.Namespace, range, range);
+  const branchSymbols: DocumentSymbol[] = [];
+
+  node.branches.forEach((branch, index) => {
+    const branchSymbol = buildConditionalBranchSymbol(document, branch, index);
+    if (branchSymbol) {
+      branchSymbols.push(branchSymbol);
+    }
+  });
+
+  symbol.children = branchSymbols;
+  return symbol;
+}
+
+function buildConditionalBranchSymbol(
+  document: TextDocument,
+  branch: ConditionalBranch,
+  index: number
+): DocumentSymbol | null {
+  const directive = branch.test ? (index === 0 ? '@if' : '@elseIf') : '@else';
+  const detail = branch.test ?? '';
+  const range = spanToRange(document, branch.span);
+  const symbol = new DocumentSymbol(directive, detail, SymbolKind.Method, range, range);
+  const children: DocumentSymbol[] = [];
+
+  for (const child of branch.body) {
+    const childSymbol = buildNodeSymbol(document, child);
+    if (childSymbol) {
+      children.push(childSymbol);
+    }
+  }
+
+  symbol.children = children;
+  return symbol;
+}
+
+function buildForLoopSymbol(document: TextDocument, node: ForLoopNode): DocumentSymbol {
+  const label = `@for ${node.variable} in ${node.iterable}`;
+  const range = spanToRange(document, node.span);
+  const symbol = new DocumentSymbol(label, 'Loop block', SymbolKind.Namespace, range, range);
+  const children: DocumentSymbol[] = [];
+
+  for (const child of node.body) {
+    const childSymbol = buildNodeSymbol(document, child);
+    if (childSymbol) {
+      children.push(childSymbol);
+    }
+  }
+
+  symbol.children = children;
+  return symbol;
+}
+
+function buildNodeSymbol(document: TextDocument, node: Node): DocumentSymbol | null {
+  switch (node.type) {
+    case 'Element':
+      return buildElementSymbol(document, node);
+    case 'Conditional':
+      return buildConditionalSymbol(document, node);
+    case 'ForLoop':
+      return buildForLoopSymbol(document, node);
+    default:
+      return null;
+  }
+}
+
+function spanWithinRange(document: TextDocument, span: SourceSpan | undefined, range: Range): boolean {
+  if (!span) {
+    return false;
+  }
+  const spanStart = span.start.offset;
+  const spanEnd = span.end.offset;
+  const rangeStart = document.offsetAt(range.start);
+  const rangeEnd = document.offsetAt(range.end);
+  return spanStart >= rangeStart && spanEnd <= rangeEnd;
+}
+
+function buildTemplateChildren(
+  document: TextDocument,
+  section: RootNode
+): DocumentSymbol[] {
+  const children: DocumentSymbol[] = [];
+
+  if (section.inputs) {
+    const inputsSymbol = buildInputsSymbol(document, section.inputs);
+    if (inputsSymbol) {
+      children.push(inputsSymbol);
+    }
+  }
+
+  for (const child of section.children) {
+    const symbol = buildNodeSymbol(document, child);
+    if (symbol) {
+      children.push(symbol);
+    }
+  }
+
+  return children;
+}
+
+function buildDocumentSymbols(document: TextDocument): DocumentSymbol[] {
+  const parsed = getParsedDocument(document);
+  const templates = listByFile(document.uri);
+
+  if (templates.length === 0) {
+    const children: DocumentSymbol[] = [];
+    const section = parsed.ast.sections[0];
+
+    if (section?.inputs) {
+      const inputsSymbol = buildInputsSymbol(document, section.inputs);
+      if (inputsSymbol) {
+        children.push(inputsSymbol);
+      }
+    }
+
+    if (section) {
+      for (const child of section.children) {
+        const symbol = buildNodeSymbol(document, child);
+        if (symbol) {
+          children.push(symbol);
+        }
+      }
+    }
+
+    return createDocumentRootSymbol(document, children);
+  }
+
+  const symbols: DocumentSymbol[] = [];
+
+  for (const template of templates) {
+    const symbol = new DocumentSymbol(
+      template.id,
+      'Template block',
+      SymbolKind.Function,
+      template.blockRange,
+      template.idRange
+    );
+    const section = findSectionByRange(document, parsed.ast.sections, template.blockRange);
+    symbol.children = section ? buildTemplateChildren(document, section) : [];
+    symbols.push(symbol);
+  }
+
+  return symbols;
+}
+
+function findSectionByRange(
+  document: TextDocument,
+  sections: RootNode[],
+  range: Range
+): RootNode | undefined {
+  for (const section of sections) {
+    if (spanWithinRange(document, section.span, range)) {
+      return section;
+    }
+  }
+  return sections[0];
+}
+
+export function registerDocumentSymbols(context: FeatureContext) {
+  const provider = languages.registerDocumentSymbolProvider({ language: 'collie' }, {
+    provideDocumentSymbols(document) {
+      if (!isFeatureFlagEnabled('navigation')) {
+        return [];
+      }
+
+      try {
+        return buildDocumentSymbols(document);
+      } catch (error) {
+        context.logger.error('Failed to build Collie document symbols.', error);
+        return [];
+      }
+    }
+  });
+
+  context.register(provider);
+  context.logger.info('Collie document symbols provider registered.');
+}

@@ -1,0 +1,312 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Collie",
+  "scopeName": "source.collie",
+  "fileTypes": ["collie"],
+  "patterns": [
+    { "include": "#strings" },
+    { "include": "#comments" },
+    { "include": "#idDirective" },
+    { "include": "#directives" },
+    { "include": "#forLoop" },
+    { "include": "#inputsBlock" },
+    { "include": "#classesBlock" },
+    { "include": "#expressionLine" },
+    { "include": "#tagHead" },
+    { "include": "#classShorthand" },
+    { "include": "#singleBraceInterpolation" },
+    { "include": "#interpolation" },
+    { "include": "#pipeText" }
+  ],
+  "repository": {
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.collie",
+          "begin": "\"",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.collie" }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.collie" }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.collie",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.collie",
+          "begin": "'",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.collie" }
+          },
+          "end": "'",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.collie" }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.collie",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.collie",
+          "begin": "/\\*",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.begin.collie" }
+          },
+          "end": "\\*/",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.comment.end.collie" }
+          },
+          "patterns": [
+            { "include": "#comments" }
+          ]
+        },
+        {
+          "name": "comment.line.double-slash.collie",
+          "match": "//.*$",
+          "captures": {
+            "0": { "name": "punctuation.definition.comment.collie" }
+          }
+        }
+      ]
+    },
+    "idDirective": {
+      "patterns": [
+        {
+          "name": "meta.id-directive.collie",
+          "match": "^\\s*(#?id)\\b(?:\\s*[:=]?\\s*)(\\S.*)?$",
+          "captures": {
+            "1": { "name": "keyword.control.directive.collie" },
+            "2": { "name": "string.unquoted.collie" }
+          }
+        }
+      ]
+    },
+    "directives": {
+      "patterns": [
+        {
+          "name": "meta.directive.condition.collie",
+          "begin": "^\\s*(@(?:if|elseIf))\\b\\s*(\\()",
+          "beginCaptures": {
+            "1": { "name": "keyword.control.directive.collie" },
+            "2": { "name": "punctuation.section.group.begin.collie" }
+          },
+          "end": "\\)",
+          "endCaptures": {
+            "0": { "name": "punctuation.section.group.end.collie" }
+          },
+          "patterns": [
+            { "include": "source.ts" },
+            { "include": "#interpolation" }
+          ]
+        },
+        {
+          "name": "meta.directive.collie",
+          "match": "^\\s*(@else)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.directive.collie" }
+          }
+        },
+        {
+          "name": "meta.directive.collie",
+          "match": "^\\s*(@(?:if|elseIf))\\b",
+          "captures": {
+            "1": { "name": "keyword.control.directive.collie" }
+          }
+        }
+      ]
+    },
+    "forLoop": {
+      "patterns": [
+        {
+          "name": "meta.for-loop.collie",
+          "match": "^\\s*(@for)\\s+([A-Za-z_][\\w]*)\\s+(in)\\s+([A-Za-z_][\\w.\\[\\]]*)",
+          "captures": {
+            "1": { "name": "keyword.control.loop.collie" },
+            "2": { "name": "variable.other.readwrite.collie" },
+            "3": { "name": "keyword.operator.loop.collie" },
+            "4": { "name": "variable.other.readwrite.collie" }
+          }
+        }
+      ]
+    },
+    "classesBlock": {
+      "begin": "^\\s*(classes)\\b",
+      "beginCaptures": {
+        "1": { "name": "storage.type.classes.collie" }
+      },
+      "end": "^(?=\\S)",
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#classAlias" }
+      ]
+    },
+    "classAlias": {
+      "patterns": [
+        {
+          "name": "meta.class-alias.collie",
+          "match": "^\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=",
+          "captures": {
+            "1": { "name": "variable.other.constant.collie" }
+          }
+        }
+      ]
+    },
+    "inputsBlock": {
+      "begin": "^\\s*(#inputs)\\b",
+      "beginCaptures": {
+        "1": { "name": "storage.type.inputs.collie" }
+      },
+      "end": "^(?=\\S)",
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#inputsFields" }
+      ]
+    },
+    "inputsFields": {
+      "patterns": [
+        {
+          "name": "meta.inputs.field.collie",
+          "begin": "^\\s+([A-Za-z_][A-Za-z0-9_]*)(\\??)\\s*(:)",
+          "beginCaptures": {
+            "1": { "name": "variable.parameter.inputs.collie" },
+            "2": { "name": "keyword.operator.optional.collie" },
+            "3": { "name": "punctuation.separator.type.collie" }
+          },
+          "end": "$",
+          "patterns": [
+            {
+              "name": "storage.type.inputs.collie",
+              "match": ".+",
+              "captures": {
+                "0": { "name": "storage.type.inputs.collie" }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "expressionLine": {
+      "patterns": [
+        {
+          "name": "meta.expression-line.collie",
+          "begin": "^\\s*(=)\\s*",
+          "beginCaptures": {
+            "1": { "name": "keyword.operator.expression.collie" }
+          },
+          "end": "$",
+          "patterns": [
+            { "include": "source.tsx" }
+          ]
+        }
+      ]
+    },
+    "tagHead": {
+      "patterns": [
+        {
+          "name": "entity.name.tag.collie",
+          "match": "^\\s*([A-Z][A-Za-z0-9_$]*)",
+          "captures": {
+            "1": { "name": "support.class.component.collie" }
+          }
+        },
+        {
+          "name": "entity.name.tag.collie",
+          "match": "^\\s*([a-z][A-Za-z0-9_$]*)",
+          "captures": {
+            "1": { "name": "entity.name.tag.html.collie" }
+          }
+        }
+      ]
+    },
+    "classShorthand": {
+      "patterns": [
+        {
+          "name": "entity.other.attribute-name.class.alias.collie",
+          "match": "\\.\\$([A-Za-z_][\\w-]*)",
+          "captures": {
+            "1": { "name": "variable.other.constant.collie" }
+          }
+        },
+        {
+          "name": "entity.other.attribute-name.class.collie",
+          "match": "\\.[A-Za-z_][\\w-]*"
+        },
+        {
+          "name": "entity.other.attribute-name.class.collie",
+          "match": "^\\s*(?=\\.)((\\.[A-Za-z_][\\w-]*)+)"
+        },
+        {
+          "name": "entity.other.attribute-name.class.collie",
+          "match": "(?<=[A-Za-z0-9\\]])(\\.[A-Za-z_][\\w-]*)+"
+        }
+      ]
+    },
+    "singleBraceInterpolation": {
+      "patterns": [
+        {
+          "name": "meta.interpolation.single-brace.collie",
+          "begin": "(?<!\\{)\\{(?!\\{)",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.template-expression.begin.collie" }
+          },
+          "end": "(?<!\\})\\}(?!\\})",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.template-expression.end.collie" }
+          },
+          "contentName": "source.ts",
+          "patterns": [
+            { "include": "source.tsx" }
+          ]
+        }
+      ]
+    },
+    "interpolation": {
+      "patterns": [
+        {
+          "name": "meta.interpolation.collie",
+          "begin": "\\{\\{",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.template-expression.begin.collie" }
+          },
+          "end": "\\}\\}",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.template-expression.end.collie" }
+          },
+          "contentName": "source.ts",
+          "patterns": [
+            { "include": "source.ts" }
+          ]
+        }
+      ]
+    },
+    "pipeText": {
+      "patterns": [
+        {
+          "name": "meta.text-line.collie",
+          "begin": "^\\s*(\\|)(?=\\s|$)",
+          "beginCaptures": {
+            "1": { "name": "keyword.operator.pipe.collie" }
+          },
+          "end": "$",
+          "contentName": "string.unquoted.collie",
+          "patterns": [
+            { "include": "#interpolation" }
+          ]
+        }
+      ]
+    }
+  }
+}

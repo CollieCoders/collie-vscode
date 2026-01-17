@@ -1,0 +1,325 @@
+import { Hover, MarkdownString, languages } from 'vscode';
+import type { Position , TextDocument } from 'vscode';
+import type { FeatureContext } from '../types';
+import type {
+  ClassAliasDecl,
+  ConditionalNode,
+  ForLoopNode,
+  Node,
+  InputsDecl,
+  InputsField,
+  RootNode,
+  TextNode
+} from '../../format/parser/ast';
+import type { SourceSpan } from '../../format/parser/diagnostics';
+import { getParsedDocument } from '../../lang/cache';
+import { isFeatureFlagEnabled } from '../featureFlags';
+
+type DirectiveKind = '@if' | '@elseIf' | '@else' | '@for';
+
+const DIRECTIVE_HOVER_CONTENT: Record<DirectiveKind, { description: string; example: string }> = {
+  '@if': {
+    description: 'Start a conditional block that renders when the expression is truthy.',
+    example: '@if (condition)\n  div.content'
+  },
+  '@elseIf': {
+    description: 'Optional branch evaluated when previous conditions fail.',
+    example: '@elseIf (otherCondition)\n  span.note'
+  },
+  '@else': {
+    description: 'Fallback branch rendered when all previous conditions fail.',
+    example: '@else\n  | Fallback content'
+  },
+  '@for': {
+    description: 'Loop over an iterable and render the block for each item.',
+    example: '@for item in items\n  div.item {item.name}'
+  }
+};
+
+const EXPRESSION_HOVER_TEXT = 'Collie expression *(evaluated in component scope)*.';
+
+function createExpressionHover(): Hover {
+  const md = new MarkdownString(EXPRESSION_HOVER_TEXT);
+  md.isTrusted = false;
+  return new Hover(md);
+}
+
+function shouldHandleDocument(document: TextDocument): boolean {
+  return document.languageId === 'collie';
+}
+
+function spanContains(span: SourceSpan | undefined, offset: number): boolean {
+  if (!span) {
+    return false;
+  }
+  return offset >= span.start.offset && offset < span.end.offset;
+}
+
+function createDirectiveHover(kind: DirectiveKind): Hover {
+  const content = DIRECTIVE_HOVER_CONTENT[kind];
+  const md = new MarkdownString();
+  md.appendMarkdown(`**${kind}** — ${content.description}\n\n`);
+  md.appendCodeblock(content.example, 'collie');
+  return new Hover(md);
+}
+
+function createInputsHover(field: InputsField): Hover {
+  const optional = field.optional ? '?' : '';
+  const md = new MarkdownString();
+  md.appendMarkdown(`**${field.name}${optional}**: \`${field.typeText}\`\n\nDefined in the inputs block.`);
+  return new Hover(md);
+}
+
+function getDirectiveHover(offset: number, nodes: Node[]): Hover | undefined {
+  for (const node of nodes) {
+    if (node.type === 'Conditional') {
+      const hover = getConditionalDirectiveHover(node, offset);
+      if (hover) {
+        return hover;
+      }
+      for (const branch of node.branches) {
+        const childHover = getDirectiveHover(offset, branch.body);
+        if (childHover) {
+          return childHover;
+        }
+      }
+    } else if (node.type === 'ForLoop') {
+      if (spanContains(node.span, offset)) {
+        return createDirectiveHover('@for');
+      }
+      const childHover = getDirectiveHover(offset, node.body);
+      if (childHover) {
+        return childHover;
+      }
+    } else if (node.type === 'Element') {
+      const inner = getDirectiveHover(offset, node.children);
+      if (inner) {
+        return inner;
+      }
+    }
+  }
+  return undefined;
+}
+
+function getConditionalDirectiveHover(node: ConditionalNode, offset: number): Hover | undefined {
+  for (let index = 0; index < node.branches.length; index++) {
+    const branch = node.branches[index];
+    if (!spanContains(branch.span, offset)) {
+      continue;
+    }
+
+    if (index === 0) {
+      return createDirectiveHover('@if');
+    }
+    if (branch.test) {
+      return createDirectiveHover('@elseIf');
+    }
+    return createDirectiveHover('@else');
+  }
+  return undefined;
+}
+
+function getInputsHover(offset: number, inputs?: InputsDecl): Hover | undefined {
+  if (!inputs) {
+    return undefined;
+  }
+
+  for (const field of inputs.fields) {
+    if (spanContains(field.span, offset)) {
+      return createInputsHover(field);
+    }
+  }
+  return undefined;
+}
+
+function hasExpressionHover(offset: number, nodes: Node[]): boolean {
+  for (const node of nodes) {
+    switch (node.type) {
+      case 'Expression':
+        if (spanContains(node.span, offset)) {
+          return true;
+        }
+        break;
+      case 'Text':
+        if (textNodeContainsExpression(node, offset)) {
+          return true;
+        }
+        break;
+      case 'Element':
+        if (hasExpressionHover(offset, node.children)) {
+          return true;
+        }
+        break;
+      case 'Conditional':
+        for (const branch of node.branches) {
+          if (hasExpressionHover(offset, branch.body)) {
+            return true;
+          }
+        }
+        break;
+      default:
+        break;
+    }
+  }
+  return false;
+}
+
+function textNodeContainsExpression(node: TextNode, offset: number): boolean {
+  for (const part of node.parts) {
+    if (part.type === 'expr' && spanContains(part.span, offset)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function provideHover(document: TextDocument, position: Position, context: FeatureContext): Hover | undefined {
+  if (!shouldHandleDocument(document) || !isFeatureFlagEnabled('hover')) {
+    return undefined;
+  }
+
+  try {
+    const parsed = getParsedDocument(document);
+    const offset = document.offsetAt(position);
+    const section = findSectionByOffset(parsed.ast.sections, offset);
+    if (!section) {
+      return undefined;
+    }
+
+    const directiveHover = getDirectiveHover(offset, section.children);
+    if (directiveHover) {
+      return directiveHover;
+    }
+
+    const inputsHover = getInputsHover(offset, section.inputs);
+    if (inputsHover) {
+      return inputsHover;
+    }
+
+    const aliasHover = getClassAliasHover(offset, section);
+    if (aliasHover) {
+      return aliasHover;
+    }
+
+    if (hasExpressionHover(offset, section.children)) {
+      return createExpressionHover();
+    }
+  } catch (error) {
+    context.logger.error('Collie hover provider failed.', error);
+  }
+
+  return undefined;
+}
+
+export function registerHoverProvider(context: FeatureContext) {
+  const provider = languages.registerHoverProvider({ language: 'collie' }, {
+    provideHover(document, position) {
+      return provideHover(document, position, context);
+    }
+  });
+
+  context.register(provider);
+  context.logger.info('Collie hover provider registered.');
+}
+
+function getClassAliasHover(offset: number, root: RootNode): Hover | undefined {
+  const decl = root.classAliases;
+  if (!decl) {
+    return undefined;
+  }
+
+  for (const alias of decl.aliases) {
+    if (spanContains(alias.nameSpan ?? alias.span, offset)) {
+      return createAliasHover(alias);
+    }
+  }
+
+  if (!decl.aliases.length) {
+    return undefined;
+  }
+
+  const aliasMap = new Map<string, ClassAliasDecl>();
+  for (const alias of decl.aliases) {
+    aliasMap.set(alias.name, alias);
+  }
+
+  for (const child of root.children) {
+    const hover = findAliasUsageHover(offset, child, aliasMap);
+    if (hover) {
+      return hover;
+    }
+  }
+
+  return undefined;
+}
+
+function findSectionByOffset(sections: RootNode[], offset: number): RootNode | undefined {
+  for (const section of sections) {
+    const start = section.span?.start.offset ?? 0;
+    const end = section.span?.end.offset ?? Number.MAX_SAFE_INTEGER;
+    if (offset >= start && offset < end) {
+      return section;
+    }
+  }
+  return sections[0];
+}
+
+function findAliasUsageHover(
+  offset: number,
+  node: Node,
+  aliasMap: Map<string, ClassAliasDecl>
+): Hover | undefined {
+  if (node.type === 'Element') {
+    const spans = node.classSpans ?? [];
+    for (let index = 0; index < spans.length; index++) {
+      if (!spanContains(spans[index], offset)) {
+        continue;
+      }
+      const aliasName = extractAliasName(node.classes[index]);
+      if (!aliasName) {
+        continue;
+      }
+      const alias = aliasMap.get(aliasName);
+      if (alias) {
+        return createAliasHover(alias);
+      }
+      return undefined;
+    }
+    for (const child of node.children) {
+      const hover = findAliasUsageHover(offset, child, aliasMap);
+      if (hover) {
+        return hover;
+      }
+    }
+    return undefined;
+  }
+
+  if (node.type === 'Conditional') {
+    for (const branch of node.branches) {
+      for (const child of branch.body) {
+        const hover = findAliasUsageHover(offset, child, aliasMap);
+        if (hover) {
+          return hover;
+        }
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function extractAliasName(token: string): string | null {
+  const match = token.match(/^\$([A-Za-z_][A-Za-z0-9_-]*)$/);
+  return match ? match[1] : null;
+}
+
+function createAliasHover(alias: ClassAliasDecl): Hover {
+  const md = new MarkdownString(undefined, true);
+  md.appendCodeblock(`$${alias.name}`, 'collie');
+  if (alias.classes.length) {
+    md.appendMarkdown('\nExpands to:\n\n');
+    md.appendCodeblock(alias.classes.join(' '), 'css');
+  }
+  md.isTrusted = true;
+  return new Hover(md);
+}

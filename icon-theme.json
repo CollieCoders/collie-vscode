@@ -1,0 +1,10 @@
+{
+  "iconDefinitions": {
+    "collie-file": {
+      "iconPath": "./assets/icons/collie-file-icon.svg"
+    }
+  },
+  "fileExtensions": {
+    "collie": "collie-file"
+  }
+}

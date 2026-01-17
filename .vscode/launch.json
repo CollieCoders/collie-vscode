@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vscode/master/.vscode/launch.schema.json",
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Collie Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+      "preLaunchTask": "pnpm: build",
+      "outFiles": ["${workspaceFolder}/dist/**/*.js", "${workspaceFolder}/dist/**/*.cjs"],
+      "sourceMaps": true
+    }
+  ]
+}
