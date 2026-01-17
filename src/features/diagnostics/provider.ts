@@ -316,7 +316,7 @@ function collectUnknownClassDiagnostics(
       const spans = node.classSpans ?? [];
       node.classes.forEach((token, indexPos) => {
         const span = spans[indexPos] ?? node.span;
-        const aliasMatch = token.match(/^\$([A-Za-z_][A-Za-z0-9_]*)$/);
+        const aliasMatch = token.match(/^\$([A-Za-z_][A-Za-z0-9_-]*)$/);
         if (aliasMatch) {
           const aliasName = aliasMatch[1];
           const expanded = aliasMap.get(aliasName);

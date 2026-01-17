@@ -1,5 +1,5 @@
 export const ELEMENT_NAME = /^[A-Za-z][A-Za-z0-9_-]*/;
-export const CLASS_TOKEN = /^(?:[A-Za-z0-9_-]+|\$[A-Za-z_][A-Za-z0-9_]*)/;
+export const CLASS_TOKEN = /^(?:[A-Za-z0-9_-]+|\$[A-Za-z_][A-Za-z0-9_-]*)/;
 
 export function hasTopLevelAssignment(payload: string): boolean {
   let quote: '"' | "'" | '`' | null = null;

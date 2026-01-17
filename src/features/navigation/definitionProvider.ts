@@ -75,7 +75,7 @@ function findClassReference(
           continue;
         }
         const token = node.classes[index];
-        const aliasMatch = token.match(/^\$([A-Za-z_][A-Za-z0-9_]*)$/);
+        const aliasMatch = token.match(/^\$([A-Za-z_][A-Za-z0-9_-]*)$/);
         if (aliasMatch) {
           const aliasName = aliasMatch[1];
           const expanded = aliasMap.get(aliasName);

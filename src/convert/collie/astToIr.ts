@@ -167,6 +167,6 @@ function expandAliasClasses(
 }
 
 function extractAliasName(token: string): string | null {
-  const match = token.match(/^\$([A-Za-z_][A-Za-z0-9_]*)$/);
+  const match = token.match(/^\$([A-Za-z_][A-Za-z0-9_-]*)$/);
   return match ? match[1] : null;
 }

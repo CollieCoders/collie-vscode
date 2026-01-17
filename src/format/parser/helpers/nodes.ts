@@ -147,7 +147,7 @@ export function parseElement(
   const span = createSpan(lineNumber, column, Math.max(line.length, 1), lineOffset);
   // Split selector-style syntax first (div.welcome.big)
   const selectorMatch = line.match(
-    /^([A-Za-z][A-Za-z0-9_$]*)(\.(?:[A-Za-z0-9_-]+|\$[A-Za-z_][A-Za-z0-9_]*))*/
+    /^([A-Za-z][A-Za-z0-9_$]*)(\.(?:[A-Za-z0-9_-]+|\$[A-Za-z_][A-Za-z0-9_-]*))*/
   );
   if (!selectorMatch) {
     pushDiag(
@@ -325,7 +325,7 @@ export function parseClassAliasLine(
   lineOffset: number,
   diagnostics: Diagnostic[]
 ): ClassAliasDecl | null {
-  const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$/);
+  const match = line.match(/^([A-Za-z_][A-Za-z0-9_-]*)\s*=\s*(.+)$/);
   if (!match) {
     pushDiag(
       diagnostics,
@@ -340,7 +340,7 @@ export function parseClassAliasLine(
   }
 
   const [, name, rhsRaw] = match;
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+  if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) {
     pushDiag(
       diagnostics,
       'COLLIE305',
@@ -425,7 +425,7 @@ export function validateNodeClassAliases(
     const { classes, classSpans } = node;
     for (let index = 0; index < classes.length; index++) {
       const token = classes[index];
-      const match = token.match(/^\$([A-Za-z_][A-Za-z0-9_]*)$/);
+      const match = token.match(/^\$([A-Za-z_][A-Za-z0-9_-]*)$/);
       if (!match) {
         continue;
       }

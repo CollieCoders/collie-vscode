@@ -99,7 +99,7 @@ function printInputs(inputs: InputsDecl, ctx: PrinterContext): string[] {
 }
 
 function printClassAliases(aliases: ClassAliasesDecl, ctx: PrinterContext): string[] {
-  const lines = ['classes'];
+  const lines = ['#classes'];
   for (const alias of aliases.aliases) {
     const indent = createIndent(ctx, 1);
     const rhs = alias.classes.join('.');

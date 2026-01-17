@@ -234,6 +234,19 @@ export function parse(source: string): ParseResult {
       continue;
     }
 
+    if (trimmed === 'classes') {
+      pushDiag(
+        diagnostics,
+        'COLLIE105',
+        'Invalid directive. Use #classes.',
+        lineNumber,
+        indent + 1,
+        lineOffset,
+        trimmed.length
+      );
+      continue;
+    }
+
     if (trimmed === '#inputs') {
       if (!sectionState) {
         sectionState = startSection(lineNumber, lineOffset);
@@ -268,7 +281,7 @@ export function parse(source: string): ParseResult {
       continue;
     }
 
-    if (trimmed === 'classes') {
+    if (trimmed === '#classes') {
       if (!sectionState) {
         sectionState = startSection(lineNumber, lineOffset);
       }
