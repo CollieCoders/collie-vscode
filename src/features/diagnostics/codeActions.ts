@@ -251,6 +251,32 @@ function buildRemoveInputAction(
   return action;
 }
 
+function buildInlineTextPrefixAction(
+  document: TextDocument,
+  diagnostic: Diagnostic
+): CodeAction | null {
+  if (diagnostic.code !== 'COLLIE004') {
+    return null;
+  }
+  if (diagnostic.message !== 'Inline text must start with |.') {
+    return null;
+  }
+
+  const start = diagnostic.range.start;
+  const line = document.lineAt(start.line).text;
+  if (start.character >= line.length || line[start.character] === '|') {
+    return null;
+  }
+
+  const edit = new WorkspaceEdit();
+  edit.insert(document.uri, start, '| ');
+
+  const action = new CodeAction('Prefix inline text with "|"', CodeActionKind.QuickFix);
+  action.edit = edit;
+  action.diagnostics = [diagnostic];
+  return action;
+}
+
 function buildPascalCaseIdAction(
   document: TextDocument,
   diagnostic: Diagnostic,
@@ -570,6 +596,11 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
         if (ignoreFileAction) {
           actions.push(ignoreFileAction);
         }
+      }
+
+      const inlineTextAction = buildInlineTextPrefixAction(document, diagnostic);
+      if (inlineTextAction) {
+        actions.push(inlineTextAction);
       }
 
       const data = diagnostic as DiagnosticData | undefined;

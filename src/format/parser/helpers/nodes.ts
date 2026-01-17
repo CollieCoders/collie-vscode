@@ -289,6 +289,16 @@ export function parseElement(
       break;
     }
 
+    const trimmedInline = rest.trimEnd();
+    pushDiag(
+      diagnostics,
+      'COLLIE004',
+      'Inline text must start with |.',
+      lineNumber,
+      column + consumed,
+      lineOffset,
+      Math.max(trimmedInline.length, 1)
+    );
     inlineText = parseInlineTextPayload(
       rest,
       lineNumber,
