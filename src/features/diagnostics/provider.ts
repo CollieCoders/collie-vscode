@@ -1,3 +1,4 @@
+import { extname } from 'path';
 import {
   Diagnostic as VSDiagnostic,
   DiagnosticSeverity,
@@ -5,7 +6,7 @@ import {
   Range,
   workspace
 } from 'vscode';
-import type { TextDocument } from 'vscode';
+import type { TextDocument, Uri } from 'vscode';
 import type { FeatureContext } from '../types';
 import { getParsedDocument, invalidateParsedDocument } from '../../lang/cache';
 import { listByFile, onDidChangeTemplateIndex, type TemplateLocation } from '../../lang/templateIndex';
@@ -49,6 +50,14 @@ function isRelevantForCrossFileRevalidation(document: TextDocument): boolean {
     return true;
   }
   return false;
+}
+
+function isTemplateUsageUri(uri: Uri): boolean {
+  if (uri.scheme !== 'file') {
+    return false;
+  }
+  const ext = extname(uri.fsPath).toLowerCase();
+  return ext === '.ts' || ext === '.tsx' || ext === '.js' || ext === '.jsx' || ext === '.html';
 }
 
 function convertParserDiagnostic(document: TextDocument, diagnostic: ParserDiagnostic): VSDiagnostic {
@@ -548,10 +557,11 @@ export function registerDiagnosticsProvider(context: FeatureContext) {
       // diagnostic-upgrade: Revalidate Collie docs when relevant files change (not just on save)
       if (shouldHandleDocument(event.document)) {
         scheduleDiagnostics(event.document, collection, context);
-        if (isTemplateUsageDocument(event.document)) {
-          invalidateTemplateUsageCache();
-          scheduleOpenDocumentsRefresh(collection, context);
-        }
+      }
+
+      if (isTemplateUsageDocument(event.document)) {
+        invalidateTemplateUsageCache();
+        scheduleOpenDocumentsRefresh(collection, context);
       } else if (isRelevantForCrossFileRevalidation(event.document)) {
         // When TSX/TS/CSS files change, revalidate all open Collie documents
         scheduleOpenDocumentsRefresh(collection, context);
@@ -564,10 +574,11 @@ export function registerDiagnosticsProvider(context: FeatureContext) {
       // diagnostic-upgrade: Save events also trigger revalidation (in addition to change events)
       if (shouldHandleDocument(document)) {
         scheduleDiagnostics(document, collection, context);
-        if (isTemplateUsageDocument(document)) {
-          invalidateTemplateUsageCache();
-          scheduleOpenDocumentsRefresh(collection, context);
-        }
+      }
+
+      if (isTemplateUsageDocument(document)) {
+        invalidateTemplateUsageCache();
+        scheduleOpenDocumentsRefresh(collection, context);
       } else if (isRelevantForCrossFileRevalidation(document)) {
         scheduleOpenDocumentsRefresh(collection, context);
       }
@@ -612,6 +623,33 @@ export function registerDiagnosticsProvider(context: FeatureContext) {
       invalidateTemplateEntryCache();
       invalidateTemplateUsageCache();
       scheduleOpenDocumentsRefresh(collection, context);
+    })
+  );
+
+  context.register(
+    workspace.onDidCreateFiles(event => {
+      if (event.files.some(isTemplateUsageUri)) {
+        invalidateTemplateUsageCache();
+        scheduleOpenDocumentsRefresh(collection, context);
+      }
+    })
+  );
+
+  context.register(
+    workspace.onDidDeleteFiles(event => {
+      if (event.files.some(isTemplateUsageUri)) {
+        invalidateTemplateUsageCache();
+        scheduleOpenDocumentsRefresh(collection, context);
+      }
+    })
+  );
+
+  context.register(
+    workspace.onDidRenameFiles(event => {
+      if (event.files.some(({ oldUri, newUri }) => isTemplateUsageUri(oldUri) || isTemplateUsageUri(newUri))) {
+        invalidateTemplateUsageCache();
+        scheduleOpenDocumentsRefresh(collection, context);
+      }
     })
   );
 

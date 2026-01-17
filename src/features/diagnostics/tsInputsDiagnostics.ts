@@ -194,10 +194,12 @@ function collectUnknownTemplateIdDiagnostics(document: TextDocument): VSDiagnost
             document.positionAt(initializer.getStart(sourceFile)),
             document.positionAt(initializer.getEnd())
           );
+          const suggestion = suggestTemplateId(value, ids);
+          const hint = suggestion ? ` Did you mean "${suggestion}"?` : '';
           const diagnostic = new VSDiagnostic(
             range,
-            `Unknown Collie template id "${value}".`,
-            DiagnosticSeverity.Warning
+            `Unknown Collie template id "${value}".${hint}`,
+            DiagnosticSeverity.Error
           );
           diagnostic.code = 'COLLIE701';
           diagnostic.source = 'collie';
@@ -211,6 +213,45 @@ function collectUnknownTemplateIdDiagnostics(document: TextDocument): VSDiagnost
 
   visit(sourceFile);
   return diagnostics;
+}
+
+function suggestTemplateId(value: string, ids: string[]): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const lowerValue = value.toLowerCase();
+  for (const id of ids) {
+    if (id.toLowerCase() === lowerValue) {
+      return id;
+    }
+  }
+
+  let best: { id: string; score: number } | null = null;
+  for (const id of ids) {
+    const score = commonPrefixLength(lowerValue, id.toLowerCase());
+    if (!best || score > best.score) {
+      best = { id, score };
+    }
+  }
+
+  if (best && best.score >= 3) {
+    return best.id;
+  }
+
+  return null;
+}
+
+function commonPrefixLength(a: string, b: string): number {
+  const max = Math.min(a.length, b.length);
+  let length = 0;
+  for (let i = 0; i < max; i += 1) {
+    if (a[i] !== b[i]) {
+      break;
+    }
+    length += 1;
+  }
+  return length;
 }
 
 async function findComponentInputUsages(
