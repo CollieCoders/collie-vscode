@@ -9,8 +9,8 @@ import {
   idDirectivePattern,
   interpolationPattern,
   pipeTextPattern,
-  propsFieldPattern,
-  propsKeywordPattern,
+  inputsFieldPattern,
+  inputsKeywordPattern,
   singleBracePattern,
   tagPattern
 } from './helpers/patterns';
@@ -23,7 +23,7 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
   const tokens: CollieSemanticToken[] = [];
   const state: TokenizerState = {
     inBlockComment: false,
-    propsIndent: null,
+    inputsIndent: null,
     classesIndent: null
   };
 
@@ -45,11 +45,11 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
     const nonWhitespace = lineText.trim();
     const indent = lineText.length - lineText.trimStart().length;
 
-    if (state.propsIndent !== null) {
+    if (state.inputsIndent !== null) {
       if (nonWhitespace.length === 0) {
-        // stay inside props block on blank lines
-      } else if (indent <= state.propsIndent && !propsKeywordPattern.test(lineText)) {
-        state.propsIndent = null;
+        // stay inside inputs block on blank lines
+      } else if (indent <= state.inputsIndent && !inputsKeywordPattern.test(lineText)) {
+        state.inputsIndent = null;
       }
     }
     if (state.classesIndent !== null) {
@@ -124,19 +124,19 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
       }
     }
 
-    const propsKeywordMatch = propsKeywordPattern.exec(lineText);
-    propsKeywordPattern.lastIndex = 0;
-    if (propsKeywordMatch) {
-      const start = propsKeywordMatch[1].length;
-      const keywordLength = propsKeywordMatch[2].length;
+    const inputsKeywordMatch = inputsKeywordPattern.exec(lineText);
+    inputsKeywordPattern.lastIndex = 0;
+    if (inputsKeywordMatch) {
+      const start = inputsKeywordMatch[1].length;
+      const keywordLength = inputsKeywordMatch[2].length;
       if (!overlaps(commentSegments, start, keywordLength)) {
         pushToken(tokens, {
           line,
           startCharacter: start,
           length: keywordLength,
-          type: 'colliePropsKeyword'
+          type: 'collieInputsKeyword'
         });
-        state.propsIndent = start;
+        state.inputsIndent = start;
       }
     }
 
@@ -156,16 +156,16 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
       }
     }
 
-    const inPropsBlock = state.propsIndent !== null && indent > state.propsIndent;
+    const inInputsBlock = state.inputsIndent !== null && indent > state.inputsIndent;
     const inClassesBlock = state.classesIndent !== null && indent > state.classesIndent;
 
-    if (inPropsBlock) {
-      const propsFieldMatch = propsFieldPattern.exec(lineText);
-      propsFieldPattern.lastIndex = 0;
-      if (propsFieldMatch) {
-        const start = propsFieldMatch[1].length;
-        const fieldName = propsFieldMatch[2];
-        const suffix = propsFieldMatch[3];
+    if (inInputsBlock) {
+      const inputsFieldMatch = inputsFieldPattern.exec(lineText);
+      inputsFieldPattern.lastIndex = 0;
+      if (inputsFieldMatch) {
+        const start = inputsFieldMatch[1].length;
+        const fieldName = inputsFieldMatch[2];
+        const suffix = inputsFieldMatch[3];
         const isFnProp = suffix === '()';
         
         if (!overlaps(commentSegments, start, fieldName.length)) {
@@ -173,7 +173,7 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
             line,
             startCharacter: start,
             length: fieldName.length,
-            type: isFnProp ? 'colliePropsFieldFn' : 'colliePropsField'
+            type: isFnProp ? 'collieInputsFieldFn' : 'collieInputsField'
           });
         }
       }
@@ -246,15 +246,15 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
       }
     }
 
-    // Tag names (avoid props block content)
-    if (!inPropsBlock) {
+    // Tag names (avoid inputs block content)
+    if (!inInputsBlock) {
       const tagMatch = tagPattern.exec(lineText);
       tagPattern.lastIndex = 0;
       if (tagMatch) {
         const start = tagMatch[1].length;
         const tagName = tagMatch[2];
         if (
-          tagName !== 'props' &&
+          tagName !== 'inputs' &&
           tagName !== 'classes' &&
           !lineText.slice(start, start + tagName.length).startsWith('@') &&
           !overlaps(commentSegments, start, tagName.length)
@@ -271,7 +271,7 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
       }
     }
 
-    if (!inPropsBlock && !inClassesBlock) {
+    if (!inInputsBlock && !inClassesBlock) {
       const tagMatch = tagPattern.exec(lineText);
       tagPattern.lastIndex = 0;
 
@@ -327,7 +327,7 @@ export function tokenizeCollieSemanticTokens(text: string): CollieSemanticToken[
     }
 
     // Event handler keys: onXxx= inside attribute lists
-    if (!inPropsBlock && !inClassesBlock) {
+    if (!inInputsBlock && !inClassesBlock) {
       const openParen = lineText.indexOf('(');
       if (openParen !== -1 && !overlaps(commentSegments, openParen, 1)) {
         const closeParen = findMatchingParenOutsideStrings(lineText, openParen);

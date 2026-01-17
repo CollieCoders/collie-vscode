@@ -28,7 +28,7 @@ export interface CollieExportFailure {
 export type CollieExportResult = CollieExportSuccess | CollieExportFailure;
 
 export function exportCollieDocument(document: TextDocument, target: CollieExportTarget): CollieExportResult {
-  const { root, diagnostics } = parse(document.getText());
+  const { document: parsedDocument, diagnostics } = parse(document.getText());
   const errors = diagnostics.filter(diag => diag.severity === 'error');
 
   if (errors.length > 0) {
@@ -40,6 +40,7 @@ export function exportCollieDocument(document: TextDocument, target: CollieExpor
     };
   }
 
+  const root = parsedDocument.sections[0] ?? { type: 'Root', children: [] };
   const irNodes = convertCollieAstToIr(root);
 
   let jsxOutput = irNodes.length > 0 ? printJsxNodes(irNodes, { target }) : buildEmptyJsxPlaceholder(target);

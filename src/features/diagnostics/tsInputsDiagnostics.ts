@@ -1,5 +1,4 @@
-import type {
-  TextDocument} from 'vscode';
+import type { TextDocument } from 'vscode';
 import {
   Diagnostic as VSDiagnostic,
   DiagnosticSeverity,
@@ -20,9 +19,9 @@ import * as ts from 'typescript';
 import type { SourceSpan } from '../../format/parser/diagnostics';
 import { getTextPreferOpenDoc } from './helpers/textHelpers';
 
-const COLLECTION_NAME = 'collie-react-props';
+const COLLECTION_NAME = 'collie-react-inputs';
 const TEMPLATE_USAGE_COLLECTION = 'collie-template-usage';
-const ENABLED_SETTING_KEY = 'collie.props.reactIntegration.enabled';
+const ENABLED_SETTING_KEY = 'collie.inputs.reactIntegration.enabled';
 const TSX_INCLUDE_GLOB = '**/*.{tsx,jsx}';
 const TSX_EXCLUDE_GLOB = '**/{node_modules,dist,build}/**';
 const MAX_TS_FILES = 200;
@@ -32,7 +31,7 @@ const DIAGNOSTIC_DEBOUNCE_MS = 300;
 const COLLIE_COMPONENT_NAMES = new Set(['Collie']);
 
 interface UsageResult {
-  props: Set<string>;
+  inputs: Set<string>;
   sawSpread: boolean;
 }
 
@@ -101,7 +100,7 @@ async function isReactIntegrationEnabled(document: TextDocument, context: Featur
   }
 
   const config = await resolveCollieConfigForDocument(document, context.logger);
-  return config.parsed.propsReactIntegrationEnabled === true;
+  return config.parsed.inputsReactIntegrationEnabled === true;
 }
 
 async function readFileText(uri: Uri): Promise<string | null> {
@@ -117,11 +116,11 @@ async function readFileText(uri: Uri): Promise<string | null> {
   }
 }
 
-function collectPropsFromJsx(
+function collectInputsFromJsx(
   sourceFile: ts.SourceFile,
   componentName: string
 ): UsageResult {
-  const props = new Set<string>();
+  const inputs = new Set<string>();
   let sawSpread = false;
 
   const visit = (node: ts.Node): void => {
@@ -131,7 +130,7 @@ function collectPropsFromJsx(
         for (const attr of node.attributes.properties) {
           if (ts.isJsxAttribute(attr)) {
             if (ts.isIdentifier(attr.name)) {
-              props.add(attr.name.text);
+              inputs.add(attr.name.text);
             }
           } else if (ts.isJsxSpreadAttribute(attr)) {
             sawSpread = true;
@@ -144,10 +143,13 @@ function collectPropsFromJsx(
   };
 
   visit(sourceFile);
-  return { props, sawSpread };
+  return { inputs, sawSpread };
 }
 
-function collectUnknownTemplateIdDiagnostics(document: TextDocument): VSDiagnostic[] {
+function collectUnknownTemplateIdDiagnostics(
+  document: TextDocument,
+  sourceFile: ts.SourceFile
+): VSDiagnostic[] {
   if (!isFeatureFlagEnabled('diagnostics')) {
     return [];
   }
@@ -158,14 +160,6 @@ function collectUnknownTemplateIdDiagnostics(document: TextDocument): VSDiagnost
   }
 
   const knownIds = new Set(ids);
-  const sourceFile = ts.createSourceFile(
-    document.uri.fsPath,
-    document.getText(),
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX
-  );
-
   const diagnostics: VSDiagnostic[] = [];
 
   const visit = (node: ts.Node): void => {
@@ -195,10 +189,12 @@ function collectUnknownTemplateIdDiagnostics(document: TextDocument): VSDiagnost
             document.positionAt(initializer.getStart(sourceFile)),
             document.positionAt(initializer.getEnd())
           );
+          const suggestion = suggestTemplateId(value, ids);
+          const hint = suggestion ? ` Did you mean "${suggestion}"?` : '';
           const diagnostic = new VSDiagnostic(
             range,
-            `Unknown Collie template id "${value}".`,
-            DiagnosticSeverity.Warning
+            `Unknown Collie template id "${value}".${hint}`,
+            DiagnosticSeverity.Error
           );
           diagnostic.code = 'COLLIE701';
           diagnostic.source = 'collie';
@@ -214,7 +210,114 @@ function collectUnknownTemplateIdDiagnostics(document: TextDocument): VSDiagnost
   return diagnostics;
 }
 
-async function findComponentPropUsages(
+function collectAmbiguousInputMappingDiagnostics(
+  document: TextDocument,
+  sourceFile: ts.SourceFile
+): VSDiagnostic[] {
+  if (!isFeatureFlagEnabled('diagnostics')) {
+    return [];
+  }
+
+  const diagnostics: VSDiagnostic[] = [];
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
+      const tagName = node.tagName;
+      if (ts.isIdentifier(tagName) && COLLIE_COMPONENT_NAMES.has(tagName.text)) {
+        for (const attr of node.attributes.properties) {
+          if (!ts.isJsxAttribute(attr) || !ts.isIdentifier(attr.name)) {
+            continue;
+          }
+
+          if (attr.name.text !== 'inputs') {
+            continue;
+          }
+
+          const initializer = attr.initializer;
+          if (!initializer || !ts.isJsxExpression(initializer)) {
+            continue;
+          }
+
+          const expression = initializer.expression;
+          if (!expression || !ts.isObjectLiteralExpression(expression)) {
+            continue;
+          }
+
+          for (const property of expression.properties) {
+            if (!ts.isShorthandPropertyAssignment(property)) {
+              continue;
+            }
+
+            const name = property.name.text;
+            if (name.length > 2) {
+              continue;
+            }
+
+            const range = new Range(
+              document.positionAt(property.name.getStart(sourceFile)),
+              document.positionAt(property.name.getEnd())
+            );
+
+            const diagnostic = new VSDiagnostic(
+              range,
+              `Consider explicit inputs mapping: inputs={{ animal: ${name} }} for clearer Collie #inputs keys.`,
+              DiagnosticSeverity.Hint
+            );
+            diagnostic.code = 'COLLIE702';
+            diagnostic.source = 'collie';
+            diagnostics.push(diagnostic);
+          }
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return diagnostics;
+}
+
+function suggestTemplateId(value: string, ids: string[]): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const lowerValue = value.toLowerCase();
+  for (const id of ids) {
+    if (id.toLowerCase() === lowerValue) {
+      return id;
+    }
+  }
+
+  let best: { id: string; score: number } | null = null;
+  for (const id of ids) {
+    const score = commonPrefixLength(lowerValue, id.toLowerCase());
+    if (!best || score > best.score) {
+      best = { id, score };
+    }
+  }
+
+  if (best && best.score >= 3) {
+    return best.id;
+  }
+
+  return null;
+}
+
+function commonPrefixLength(a: string, b: string): number {
+  const max = Math.min(a.length, b.length);
+  let length = 0;
+  for (let i = 0; i < max; i += 1) {
+    if (a[i] !== b[i]) {
+      break;
+    }
+    length += 1;
+  }
+  return length;
+}
+
+async function findComponentInputUsages(
   folder: WorkspaceFolder,
   componentName: string,
   context: FeatureContext
@@ -225,13 +328,13 @@ async function findComponentPropUsages(
 
   if (files.length > MAX_TS_FILES) {
     context.logger.info(
-      `Skipping React prop analysis (more than ${MAX_TS_FILES} TSX/JSX files).`
+      `Skipping React input analysis (more than ${MAX_TS_FILES} TSX/JSX files).`
     );
-    return { props: new Set(), sawSpread: false };
+    return { inputs: new Set(), sawSpread: false };
   }
 
   let totalBytes = 0;
-  const props = new Set<string>();
+  const inputs = new Set<string>();
   let sawSpread = false;
 
   for (const uri of files) {
@@ -251,7 +354,7 @@ async function findComponentPropUsages(
     totalBytes += size;
     if (totalBytes > MAX_TOTAL_BYTES) {
       context.logger.info(
-        `Skipping React prop analysis after ${MAX_TOTAL_BYTES} bytes of TSX/JSX.`
+      `Skipping React input analysis after ${MAX_TOTAL_BYTES} bytes of TSX/JSX.`
       );
       break;
     }
@@ -270,9 +373,9 @@ async function findComponentPropUsages(
       ts.ScriptKind.TSX
     );
 
-    const result = collectPropsFromJsx(sourceFile, componentName);
-    for (const name of result.props) {
-      props.add(name);
+    const result = collectInputsFromJsx(sourceFile, componentName);
+    for (const name of result.inputs) {
+      inputs.add(name);
     }
     if (result.sawSpread) {
       sawSpread = true;
@@ -280,14 +383,18 @@ async function findComponentPropUsages(
   }
 
   if (sawSpread) {
-    context.logger.info('React prop analysis encountered JSX spread props; results may be incomplete.');
+    context.logger.info('React input analysis encountered JSX spread inputs; results may be incomplete.');
   }
 
-  return { props, sawSpread };
+  return { inputs, sawSpread };
 }
 
 async function computeDiagnostics(document: TextDocument, context: FeatureContext): Promise<VSDiagnostic[]> {
   const parsed = getParsedDocument(document);
+  if (parsed.ast.sections.length !== 1) {
+    return [];
+  }
+  const section = parsed.ast.sections[0];
   const componentName = deriveComponentName(document);
   if (!componentName) {
     return [];
@@ -298,26 +405,26 @@ async function computeDiagnostics(document: TextDocument, context: FeatureContex
     return [];
   }
 
-  const declaredProps = new Set(parsed.ast.props?.fields.map(field => field.name) ?? []);
-  const propsSpan = parsed.ast.props?.span;
+  const declaredInputs = new Set(section.inputs?.fields.map(field => field.name) ?? []);
+  const inputsSpan = section.inputs?.span;
 
-  const usage = await findComponentPropUsages(folder, componentName, context);
+  const usage = await findComponentInputUsages(folder, componentName, context);
 
   const diagnostics: VSDiagnostic[] = [];
-  const range = spanToRange(document, propsSpan);
+  const range = spanToRange(document, inputsSpan);
 
-  for (const propName of usage.props) {
-    if (!declaredProps.has(propName)) {
+  for (const inputName of usage.inputs) {
+    if (!declaredInputs.has(inputName)) {
       const diagnostic = new VSDiagnostic(
         range,
-        `Prop "${propName}" is passed to <${componentName}> but not declared in the props block.`,
+        `Input "${inputName}" is passed to <${componentName}> but not declared in the inputs block.`,
         DiagnosticSeverity.Information
       );
       diagnostic.code = 'COLLIE601';
       diagnostic.source = 'collie';
       diagnostic.data = {
-        kind: 'addPropDeclaration',
-        propName
+        kind: 'addInputDeclaration',
+        inputName
       };
       diagnostics.push(diagnostic);
     }
@@ -352,7 +459,7 @@ async function updateDiagnostics(
   try {
     diagnostics = await computeDiagnostics(document, context);
   } catch (error) {
-    context.logger.warn('React prop analysis failed.', error);
+    context.logger.warn('React input analysis failed.', error);
   }
 
   diagnosticsCache.set(cacheKey, {
@@ -380,7 +487,15 @@ function updateTemplateUsageDiagnostics(
     return;
   }
 
-  const diagnostics = collectUnknownTemplateIdDiagnostics(document);
+  const sourceFile = ts.createSourceFile(
+    document.uri.fsPath,
+    document.getText(),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+  const diagnostics = collectUnknownTemplateIdDiagnostics(document, sourceFile);
+  diagnostics.push(...collectAmbiguousInputMappingDiagnostics(document, sourceFile));
   templateUsageCache.set(cacheKey, {
     documentVersion: document.version,
     templateIndexVersion,
@@ -462,7 +577,7 @@ function refreshOpenTemplateUsageDocuments(
   }
 }
 
-export function registerTsPropsDiagnostics(context: FeatureContext) {
+export function registerTsInputsDiagnostics(context: FeatureContext) {
   const collection = languages.createDiagnosticCollection(COLLECTION_NAME);
   context.register(collection);
 
@@ -573,5 +688,5 @@ export function registerTsPropsDiagnostics(context: FeatureContext) {
     })
   );
 
-  context.logger.info('React props diagnostics registered.');
+  context.logger.info('React inputs diagnostics registered.');
 }

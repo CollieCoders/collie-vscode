@@ -4,7 +4,7 @@ import type { CollieSemanticTokenType } from '../semanticTokens/legend';
 
 const directivePattern = /@(if|elseIf|else)\b/g;
 const classPattern = /\.[A-Za-z_][\w-]*/g;
-const propsFieldPattern = /^(\s*)([A-Za-z_][\w-]*)(\??)\s*:/;
+const inputsFieldPattern = /^(\s*)([A-Za-z_][\w-]*)(\??)\s*:/;
 const tagPattern = /^(\s*)([A-Za-z][\w-]*)/;
 
 function isWithin(character: number, start: number, length: number): boolean {
@@ -36,22 +36,22 @@ function inferFromLine(lineText: string, character: number): CollieSemanticToken
     }
   }
 
-  // Props field lines
-  const propsFieldMatch = propsFieldPattern.exec(lineText);
-  if (propsFieldMatch) {
-    const start = propsFieldMatch[1].length;
-    const nameLength = propsFieldMatch[2].length;
+  // Inputs field lines
+  const inputsFieldMatch = inputsFieldPattern.exec(lineText);
+  if (inputsFieldMatch) {
+    const start = inputsFieldMatch[1].length;
+    const nameLength = inputsFieldMatch[2].length;
     if (isWithin(safeChar, start, nameLength)) {
-      return 'colliePropsField';
+      return 'collieInputsField';
     }
   }
 
-  // Tag name at line start (skip props keyword)
+  // Tag name at line start (skip inputs keyword)
   const tagMatch = tagPattern.exec(lineText);
   if (tagMatch) {
     const start = tagMatch[1].length;
     const name = tagMatch[2];
-    if (name !== 'props' && !name.startsWith('@') && isWithin(safeChar, start, name.length)) {
+    if (name !== 'inputs' && !name.startsWith('@') && isWithin(safeChar, start, name.length)) {
       return 'collieTag';
     }
   }

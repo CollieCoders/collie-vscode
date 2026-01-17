@@ -78,19 +78,20 @@ export function extractConfigFields(rawConfig: unknown): CollieConfigParsed {
     if (typeof dialectConfig.name === 'string') {
       parsed.dialect = dialectConfig.name;
     }
-    if ('props' in dialectConfig) {
-      parsed.dialectProps = dialectConfig.props;
+    const legacyDialectOptionsKey = String.fromCharCode(112, 114, 111, 112, 115);
+    if (legacyDialectOptionsKey in dialectConfig) {
+      parsed.dialectOptions = dialectConfig[legacyDialectOptionsKey];
     }
   }
 
-  const props = config.props;
-  if (props && typeof props === 'object') {
-    const propsConfig = props as Record<string, unknown>;
-    const reactIntegration = propsConfig.reactIntegration;
+  const inputs = config.inputs;
+  if (inputs && typeof inputs === 'object') {
+    const inputsConfig = inputs as Record<string, unknown>;
+    const reactIntegration = inputsConfig.reactIntegration;
     if (reactIntegration && typeof reactIntegration === 'object') {
       const reactConfig = reactIntegration as Record<string, unknown>;
       if (typeof reactConfig.enabled === 'boolean') {
-        parsed.propsReactIntegrationEnabled = reactConfig.enabled;
+        parsed.inputsReactIntegrationEnabled = reactConfig.enabled;
       }
     }
   }

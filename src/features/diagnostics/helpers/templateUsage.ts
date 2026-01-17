@@ -1,12 +1,13 @@
 import { workspace } from 'vscode';
-import { TextDecoder } from 'util';
+// import { TextDecoder } from 'util';
 import type { TextDocument } from 'vscode';
+import { getTextPreferOpenDoc } from './textHelpers';
 
 const TEMPLATE_USAGE_GLOB = '**/*.{ts,tsx,js,jsx,html}';
 const TEMPLATE_USAGE_EXCLUDE_GLOB = '**/{node_modules,dist,build,out,coverage,.git}/**';
 const COLLIE_COMPONENT_PATTERN = /<Collie\b[^>]*\bid\s*=\s*["']([^"']+)["']/g;
 const HTML_PLACEHOLDER_PATTERN = /\bid\s*=\s*["']([^"']*-collie)["']/g;
-const textDecoder = new TextDecoder('utf-8');
+// const textDecoder = new TextDecoder('utf-8');
 
 let templateUsageVersion = 0;
 let cachedTemplateUsageVersion = -1;
@@ -53,8 +54,10 @@ export async function getReferencedTemplateIds(): Promise<Set<string>> {
     for (const uri of files) {
       let contents = '';
       try {
-        const data = await workspace.fs.readFile(uri);
-        contents = textDecoder.decode(data);
+        // diagnostic-upgrade: Prefer open document buffers over disk reads
+        // This allows unreferenced template warnings to clear when adding <Collie id="..."/> in unsaved TSX
+        // eslint-disable-next-line no-await-in-loop
+        contents = await getTextPreferOpenDoc(uri);
       } catch {
         continue;
       }

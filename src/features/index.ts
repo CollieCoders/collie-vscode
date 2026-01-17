@@ -28,7 +28,7 @@ export async function activateFeatures(
 
   await runFeature('diagnostics/provider', registerDiagnosticsProvider, featureContext);
   await runFeature('diagnostics/codeActions', registerDiagnosticsCodeActions, featureContext);
-  await runFeature('diagnostics/tsPropsDiagnostics', registerTsPropsDiagnostics, featureContext);
+  await runFeature('diagnostics/tsInputsDiagnostics', registerTsInputsDiagnostics, featureContext);
 
   await runFeature('hover/provider', registerHoverProvider, featureContext);
 
@@ -63,7 +63,7 @@ import { registerNavigationCommands } from './navigation/commands';
 
 import { registerDiagnosticsProvider } from './diagnostics/provider';
 import { registerDiagnosticsCodeActions } from './diagnostics/codeActions';
-import { registerTsPropsDiagnostics } from './diagnostics/tsPropsDiagnostics';
+import { registerTsInputsDiagnostics } from './diagnostics/tsInputsDiagnostics';
 
 import { registerHoverProvider } from './hover/provider';
 

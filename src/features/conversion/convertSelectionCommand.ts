@@ -89,7 +89,7 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
     const parseResult = parseJsxSelection(selection.text);
     const conversion = convertJsxNodesToIr(parseResult.rootNodes, parseResult.sourceFile);
     const collieText = printCollieDocument(conversion.nodes);
-    const propKinds = collectIdentifiersFromIrNodes(conversion.nodes);
+    const inputKinds = collectIdentifiersFromIrNodes(conversion.nodes);
     const warnings = conversion.diagnostics.warnings;
     const extractedSelection = parseResult.selectionText !== selection.text;
     logSelection(
@@ -112,11 +112,11 @@ export async function runConvertTsxSelectionToCollie(context: FeatureContext): P
       collieText,
       templateId,
       targetUri,
-      propKinds
+      inputKinds
     );
     if (created) {
-      const propNames = Array.from(propKinds.keys());
-      const applied = await applyTsxEdits(selection, created.templateId, propNames);
+      const inputNames = Array.from(inputKinds.keys());
+      const applied = await applyTsxEdits(selection, created.templateId, inputNames);
       const filename = basename(created.uri.fsPath);
       const action = created.wasCreated ? 'Created' : 'Updated';
       const insertionMessage = `${action} ${filename}, inserted <Collie id="${created.templateId}">.`;
@@ -219,7 +219,7 @@ async function deliverCollieOutput(
   collieText: string,
   templateId: string,
   targetUri: Uri | undefined,
-  propKinds: Map<string, PropKindInfo>
+  inputKinds: Map<string, InputKindInfo>
 ): Promise<CollieCreationResult | null> {
   if (!collieText.trim()) {
     window.showWarningMessage('Collie conversion produced empty output. Nothing to deliver.');
@@ -237,7 +237,7 @@ async function deliverCollieOutput(
     templateId,
     collieText,
     document.eol === EndOfLine.CRLF ? '\r\n' : '\n',
-    propKinds
+    inputKinds
   );
   await openCollieDocumentAt(result.uri, result.idLine);
   return { uri: result.uri, templateId, idLine: result.idLine, wasCreated: result.wasCreated };
@@ -301,7 +301,7 @@ async function collectExistingTemplateIds(targetUri: Uri | undefined): Promise<S
 async function applyTsxEdits(
   selection: SelectionContext,
   templateId: string,
-  propNames: string[]
+  inputNames: string[]
 ): Promise<boolean> {
   const document = selection.document;
   const sourceText = document.getText();
@@ -315,7 +315,7 @@ async function applyTsxEdits(
 
   const edit = new WorkspaceEdit();
   const replaceRange = getReplacementRange(selection);
-  const replacement = buildCollieComponentReplacement(templateId, propNames);
+  const replacement = buildCollieComponentReplacement(templateId, inputNames);
   edit.replace(document.uri, replaceRange, replacement);
   ensureCollieImport(document, sourceFile, edit);
 
@@ -441,33 +441,33 @@ function isWhitespace(char: string): boolean {
   return char === ' ' || char === '\n' || char === '\r' || char === '\t';
 }
 
-function buildCollieComponentReplacement(templateId: string, propNames: string[]): string {
-  const normalized = Array.from(new Set(propNames.filter(Boolean)));
+function buildCollieComponentReplacement(templateId: string, inputNames: string[]): string {
+  const normalized = Array.from(new Set(inputNames.filter(Boolean)));
   if (normalized.length === 0) {
     return `<Collie id="${templateId}" />`;
   }
-  const props = normalized.map(name => `${name}={${name}}`).join(' ');
-  return `<Collie id="${templateId}" ${props} />`;
+  const inputs = normalized.join(', ');
+  return `<Collie id="${templateId}" inputs={{ ${inputs} }} />`;
 }
 
-interface PropKindInfo {
+interface InputKindInfo {
   kind: 'fn' | 'value';
 }
 
-function collectIdentifiersFromIrNodes(nodes: readonly IrNode[]): Map<string, PropKindInfo> {
+function collectIdentifiersFromIrNodes(nodes: readonly IrNode[]): Map<string, InputKindInfo> {
   const names = new Map<string, Set<'call' | 'event' | 'arrow' | 'ref'>>();
 
   const visit = (node: IrNode): void => {
     switch (node.kind) {
       case 'element':
-        for (const prop of node.props) {
-          if (prop.kind === 'prop') {
-            if (prop.value) {
-              const isEventHandler = /^on[A-Z]/.test(prop.name);
-              collectIdentifiersFromExpressionText(prop.value, names, isEventHandler);
+        for (const attr of node.attributes) {
+          if (attr.kind === 'attribute') {
+            if (attr.value) {
+              const isEventHandler = /^on[A-Z]/.test(attr.name);
+              collectIdentifiersFromExpressionText(attr.value, names, isEventHandler);
             }
           } else {
-            collectIdentifiersFromExpressionText(prop.expressionText, names, false);
+            collectIdentifiersFromExpressionText(attr.expressionText, names, false);
           }
         }
         for (const child of node.children) {
@@ -505,7 +505,7 @@ function collectIdentifiersFromIrNodes(nodes: readonly IrNode[]): Map<string, Pr
     visit(node);
   }
 
-  const result = new Map<string, PropKindInfo>();
+  const result = new Map<string, InputKindInfo>();
   for (const [name, usages] of names.entries()) {
     if (usages.has('call') || usages.has('event') || usages.has('arrow')) {
       result.set(name, { kind: 'fn' });
@@ -620,8 +620,8 @@ function collectIdentifiersFromExpression(
   const visit = (node: ts.Node, isCalleeContext: boolean = false, isArrowBody: boolean = false): void => {
     if (ts.isIdentifier(node)) {
       if (isIdentifierReference(node)) {
-        // Only treat as prop if not bound locally and not 'props'
-        if (node.text !== 'props' && !isBound(node.text)) {
+        // Only treat as input if not bound locally and not 'inputs'
+        if (node.text !== 'inputs' && !isBound(node.text)) {
           const usages = names.get(node.text) ?? new Set();
           if (isCalleeContext) {
             usages.add('call');

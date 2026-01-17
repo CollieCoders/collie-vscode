@@ -9,7 +9,7 @@
     { "include": "#idDirective" },
     { "include": "#directives" },
     { "include": "#forLoop" },
-    { "include": "#propsBlock" },
+    { "include": "#inputsBlock" },
     { "include": "#classesBlock" },
     { "include": "#expressionLine" },
     { "include": "#tagHead" },
@@ -164,34 +164,34 @@
         }
       ]
     },
-    "propsBlock": {
-      "begin": "^\\s*(props)\\b",
+    "inputsBlock": {
+      "begin": "^\\s*(#inputs)\\b",
       "beginCaptures": {
-        "1": { "name": "storage.type.props.collie" }
+        "1": { "name": "storage.type.inputs.collie" }
       },
       "end": "^(?=\\S)",
       "patterns": [
         { "include": "#comments" },
-        { "include": "#propsFields" }
+        { "include": "#inputsFields" }
       ]
     },
-    "propsFields": {
+    "inputsFields": {
       "patterns": [
         {
-          "name": "meta.props.field.collie",
+          "name": "meta.inputs.field.collie",
           "begin": "^\\s+([A-Za-z_][A-Za-z0-9_]*)(\\??)\\s*(:)",
           "beginCaptures": {
-            "1": { "name": "variable.parameter.props.collie" },
+            "1": { "name": "variable.parameter.inputs.collie" },
             "2": { "name": "keyword.operator.optional.collie" },
             "3": { "name": "punctuation.separator.type.collie" }
           },
           "end": "$",
           "patterns": [
             {
-              "name": "storage.type.props.collie",
+              "name": "storage.type.inputs.collie",
               "match": ".+",
               "captures": {
-                "0": { "name": "storage.type.props.collie" }
+                "0": { "name": "storage.type.inputs.collie" }
               }
             }
           ]

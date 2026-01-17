@@ -73,8 +73,8 @@ function printNode(node: IrNode, level: number, ctx: JsxPrinterContext, out: str
 
 function printElement(node: IrElement, level: number, ctx: JsxPrinterContext, out: string[]) {
   const indent = createIndent(level, ctx);
-  const propsSegment = formatElementProps(node);
-  const opening = `<${node.tagName}${propsSegment}`;
+  const attributesSegment = formatElementAttributes(node);
+  const opening = `<${node.tagName}${attributesSegment}`;
   if (node.children.length === 0) {
     out.push(`${indent}${opening} />`);
     return;
@@ -85,23 +85,23 @@ function printElement(node: IrElement, level: number, ctx: JsxPrinterContext, ou
   out.push(`${indent}</${node.tagName}>`);
 }
 
-function formatElementProps(node: IrElement): string {
+function formatElementAttributes(node: IrElement): string {
   const attributes: string[] = [];
   if (node.classes.length > 0) {
     attributes.push(`className=${JSON.stringify(node.classes.join(' '))}`);
   }
 
-  for (const prop of node.props) {
-    if (prop.kind === 'prop') {
-      if (prop.value === undefined) {
-        attributes.push(prop.name);
+  for (const attr of node.attributes) {
+    if (attr.kind === 'attribute') {
+      if (attr.value === undefined) {
+        attributes.push(attr.name);
       } else {
-        attributes.push(`${prop.name}=${prop.value}`);
+        attributes.push(`${attr.name}=${attr.value}`);
       }
       continue;
     }
 
-    attributes.push(`{${prop.expressionText}}`);
+    attributes.push(`{${attr.expressionText}}`);
   }
 
   if (!attributes.length) {

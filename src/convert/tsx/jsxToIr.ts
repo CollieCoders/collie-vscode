@@ -5,11 +5,11 @@ import {
   createIrConditionalBranch,
   createIrExpression,
   createIrFragment,
-  createIrProp,
+  createIrAttribute,
   createIrText,
   type IrExpression,
   type IrNode,
-  type IrProp
+  type IrAttribute
 } from '../ir/nodes';
 
 export interface JsxConversionDiagnostics {
@@ -78,13 +78,13 @@ function convertJsxElement(
   diagnostics: JsxConversionDiagnostics
 ) {
   const tagName = node.openingElement.tagName.getText(sourceFile);
-  const props = convertJsxAttributes(node.openingElement.attributes, sourceFile, diagnostics);
+  const attributes = convertJsxAttributes(node.openingElement.attributes, sourceFile, diagnostics);
   const children = convertJsxChildren(node.children, sourceFile, diagnostics);
-  const { normalizedProps, classes } = normalizeProps(props);
+  const { normalizedAttributes, classes } = normalizeAttributes(attributes);
 
   return createIrElement(tagName, {
     classes,
-    props: normalizedProps,
+    attributes: normalizedAttributes,
     children
   });
 }
@@ -95,12 +95,12 @@ function convertJsxSelfClosingElement(
   diagnostics: JsxConversionDiagnostics
 ) {
   const tagName = node.tagName.getText(sourceFile);
-  const props = convertJsxAttributes(node.attributes, sourceFile, diagnostics);
-  const { normalizedProps, classes } = normalizeProps(props);
+  const attributes = convertJsxAttributes(node.attributes, sourceFile, diagnostics);
+  const { normalizedAttributes, classes } = normalizeAttributes(attributes);
 
   return createIrElement(tagName, {
     classes,
-    props: normalizedProps,
+    attributes: normalizedAttributes,
     children: []
   });
 }
@@ -264,13 +264,13 @@ function convertJsxAttributes(
   sourceFile: ts.SourceFile,
   diagnostics: JsxConversionDiagnostics
 ) {
-  const props: (IrProp | IrExpression)[] = [];
+  const attrs: (IrAttribute | IrExpression)[] = [];
 
   for (const attribute of attributes.properties) {
     if (ts.isJsxAttribute(attribute)) {
       const name = attribute.name.getText(sourceFile);
       const value = convertAttributeValue(attribute.initializer, sourceFile, diagnostics);
-      props.push(createIrProp(name, value));
+      attrs.push(createIrAttribute(name, value));
       continue;
     }
 
@@ -279,20 +279,20 @@ function convertJsxAttributes(
         diagnostics.warnings.push(
           `Spread attribute contains JSX. Inserted placeholder: ${summarizeNodeText(attribute.expression, sourceFile)}`
         );
-        props.push(createIrExpression(buildPlaceholderText('spread attribute', attribute.expression, sourceFile)));
+        attrs.push(createIrExpression(buildPlaceholderText('spread attribute', attribute.expression, sourceFile)));
         continue;
       }
       const spreadText = `...${attribute.expression.getText(sourceFile)}`;
-      props.push(createIrExpression(spreadText));
+      attrs.push(createIrExpression(spreadText));
       continue;
     }
 
     const attributeKind = (attribute as ts.Node).kind;
     diagnostics.warnings.push(`Unsupported JSX attribute omitted: ${ts.SyntaxKind[attributeKind]}`);
-    props.push(createPlaceholderExpression('unsupported JSX attribute', attribute, sourceFile));
+    attrs.push(createPlaceholderExpression('unsupported JSX attribute', attribute, sourceFile));
   }
 
-  return props;
+  return attrs;
 }
 
 function convertAttributeValue(
@@ -314,18 +314,18 @@ function convertAttributeValue(
     }
     if (containsJsx(initializer.expression)) {
       diagnostics.warnings.push(
-        `Prop value contains JSX. Inserted placeholder: ${summarizeNodeText(initializer.expression, sourceFile)}`
+        `Attribute value contains JSX. Inserted placeholder: ${summarizeNodeText(initializer.expression, sourceFile)}`
       );
-      return `{${buildPlaceholderText('prop value', initializer.expression, sourceFile)}}`;
+      return `{${buildPlaceholderText('attribute value', initializer.expression, sourceFile)}}`;
     }
     return `{${initializer.expression.getText(sourceFile)}}`;
   }
 
   if (containsJsx(initializer)) {
     diagnostics.warnings.push(
-      `Prop initializer contains JSX. Inserted placeholder: ${summarizeNodeText(initializer, sourceFile)}`
+      `Attribute initializer contains JSX. Inserted placeholder: ${summarizeNodeText(initializer, sourceFile)}`
     );
-    return `{${buildPlaceholderText('prop initializer', initializer, sourceFile)}}`;
+    return `{${buildPlaceholderText('attribute initializer', initializer, sourceFile)}}`;
   }
 
   return initializer.getText(sourceFile);
@@ -383,23 +383,23 @@ function summarizeNodeText(node: ts.Node, sourceFile: ts.SourceFile) {
 
 // Class aliases are authored directly in Collie templates.
 // JSX/TSX to Collie conversion does not attempt to infer `classes` blocks.
-function normalizeProps(props: readonly (IrProp | IrExpression)[]) {
-  const normalizedProps: (IrProp | IrExpression)[] = [];
+function normalizeAttributes(attributes: readonly (IrAttribute | IrExpression)[]) {
+  const normalizedAttributes: (IrAttribute | IrExpression)[] = [];
   const classes: string[] = [];
 
-  for (const prop of props) {
-    if (prop.kind === 'prop' && prop.name === 'className' && prop.value) {
-      const classTokens = extractClassTokens(prop.value);
+  for (const attr of attributes) {
+    if (attr.kind === 'attribute' && attr.name === 'className' && attr.value) {
+      const classTokens = extractClassTokens(attr.value);
       if (classTokens) {
         classes.push(...classTokens);
         continue;
       }
     }
 
-    normalizedProps.push(prop);
+    normalizedAttributes.push(attr);
   }
 
-  return { normalizedProps, classes };
+  return { normalizedAttributes, classes };
 }
 
 function extractClassTokens(value: string): string[] | undefined {

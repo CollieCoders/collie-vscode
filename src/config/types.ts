@@ -2,8 +2,8 @@ export interface CollieConfigParsed {
   cssStrategy?: string;
   cssUnknownClass?: string;
   dialect?: string;
-  dialectProps?: unknown;
-  propsReactIntegrationEnabled?: boolean;
+  dialectOptions?: unknown;
+  inputsReactIntegrationEnabled?: boolean;
 }
 
 export interface CollieConfigFlags {

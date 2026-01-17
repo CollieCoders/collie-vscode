@@ -2,6 +2,7 @@ import type {
   ClassAliasesDecl,
   ConditionalBranch,
   ConditionalNode,
+  DocumentNode,
   ElementNode,
   ForLoopNode,
   Node,
@@ -10,7 +11,7 @@ import type {
 import type { Diagnostic, SourceSpan } from './diagnostics';
 
 export interface ParseResult {
-  root: RootNode;
+  document: DocumentNode;
   diagnostics: Diagnostic[];
 }
 

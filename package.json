@@ -2,7 +2,7 @@
   "name": "collie-vscode",
   "displayName": "Collie",
   "description": "VS Code language support for Collie templates",
-  "version": "1.2.3",
+  "version": "1.5.0",
   "publisher": "collie",
   "license": "MIT",
   "repository": "https://github.com/collie-lang/collie-vscode",
@@ -91,7 +91,7 @@
         "collie.features.hover": {
           "type": "boolean",
           "default": true,
-          "description": "Enable Collie hover info (directives, props, expressions)."
+          "description": "Enable Collie hover info (directives, inputs, expressions)."
         },
         "collie.format.indentSize": {
           "type": "number",
@@ -109,10 +109,10 @@
           "default": true,
           "description": "Insert a space between the pipe symbol and inline/standalone text."
         },
-        "collie.format.normalizePropsSpacing": {
+        "collie.format.normalizeInputsSpacing": {
           "type": "boolean",
           "default": true,
-          "description": "Normalize props declarations to use a single space after the colon."
+          "description": "Normalize inputs declarations to use a single space after the colon."
         },
         "collie.css.diagnostics.unknownClassOverride": {
           "type": "string",
@@ -124,10 +124,10 @@
           "default": "inherit",
           "description": "Override unknown class diagnostics from Collie config (inherit/on/off)."
         },
-        "collie.props.reactIntegration.enabled": {
+        "collie.inputs.reactIntegration.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Enable experimental React integration diagnostics for Collie props."
+          "description": "Enable experimental React integration diagnostics for Collie inputs."
         },
         "collie.warnings.missingConfig.enabled": {
           "type": "boolean",
@@ -164,8 +164,8 @@
         "category": "Collie"
       },
       {
-        "command": "collie.customizePropsFieldColor",
-        "title": "Collie: Customize Props Field Color",
+        "command": "collie.customizeInputsFieldColor",
+        "title": "Collie: Customize Inputs Field Color",
         "category": "Collie"
       },
       {
@@ -275,45 +275,65 @@
         "enabled": true,
         "rules": {
           "collieTag": {
-            "foreground": "#61AFEF"
+            "foreground": "#6CB6FF"
+          },
+          "collieComponent": {
+            "foreground": "#FFD580"
           },
           "collieClassShorthand": {
-            "foreground": "#56B6C2"
+            "foreground": "#4EC9B0"
+          },
+          "collieClassesKeyword": {
+            "foreground": "#C586C0"
+          },
+          "collieClassAliasName": {
+            "foreground": "#F26D6D"
+          },
+          "collieClassAliasUsage": {
+            "foreground": "#4EC9B0"
           },
           "collieDirective": {
-            "foreground": "#C678DD"
+            "foreground": "#C586C0"
           },
-          "colliePropsKeyword": {
-            "foreground": "#C678DD"
+          "collieForLoop": {
+            "foreground": "#C586C0",
+            "fontStyle": "italic"
           },
-          "colliePropsField": {
-            "foreground": "#d59750"
+          "collieInputsKeyword": {
+            "foreground": "#B39DF3"
+          },
+          "collieInputsField": {
+            "foreground": "#E0AF68"
+          },
+          "collieInputsFieldFn": {
+            "foreground": "#9ECE6A"
+          },
+          "collieEventHandler": {
+            "foreground": "#6CB6FF",
+            "fontStyle": "bold"
           },
           "collieInterpolation": {
-            "foreground": "#e5d77b",
+            "foreground": "#FFD580",
             "fontStyle": "bold"
+          },
+          "collieSingleBraceInterpolation": {
+            "foreground": "#E6C27A"
+          },
+          "collieExpressionLine": {
+            "foreground": "#AAB2BF"
           },
           "colliePipeText": {
             "foreground": "#D4D4D4"
           },
           "collieComment": {
-            "foreground": "#5C6370",
+            "foreground": "#636B78",
             "fontStyle": "italic"
           },
-          "collieClassesKeyword": {
-            "foreground": "#C678DD"
-          },
-          "collieClassAliasName": {
-            "foreground": "#E06C75"
-          },
-          "collieClassAliasUsage": {
-            "foreground": "#56B6C2"
-          },
           "collieIdKeyword": {
-            "foreground": "#C678DD"
+            "foreground": "#C586C0"
           },
           "collieIdValue": {
-            "foreground": "#E06C75",
+            "foreground": "#F26D6D",
             "fontStyle": "bold"
           }
         }

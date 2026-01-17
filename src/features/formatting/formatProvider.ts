@@ -10,7 +10,7 @@ function readFormatterOptions(): FormatterOptions {
     indentSize: Math.max(1, config.get<number>('format.indentSize', 2)),
     preferCompactSelectors: config.get<boolean>('format.preferCompactSelectors', true),
     spaceAroundPipe: config.get<boolean>('format.spaceAroundPipe', true),
-    normalizePropsSpacing: config.get<boolean>('format.normalizePropsSpacing', true)
+    normalizeInputsSpacing: config.get<boolean>('format.normalizeInputsSpacing', true)
   };
 }
 

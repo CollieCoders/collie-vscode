@@ -1,11 +1,12 @@
 import type {
   ClassAliasesDecl,
   ConditionalNode,
+  DocumentNode,
   ElementNode,
   ExpressionNode,
   ForLoopNode,
   Node,
-  PropsDecl,
+  InputsDecl,
   RootNode,
   TextNode
 } from '../parser';
@@ -15,14 +16,14 @@ export interface PrintOptions {
   indentSize?: number;
   preferCompactSelectors?: boolean;
   spaceAroundPipe?: boolean;
-  normalizePropsSpacing?: boolean;
+  normalizeInputsSpacing?: boolean;
 }
 
 const DEFAULT_OPTIONS: Required<PrintOptions> = {
   indentSize: 2,
   preferCompactSelectors: true,
   spaceAroundPipe: true,
-  normalizePropsSpacing: true
+  normalizeInputsSpacing: true
 };
 
 interface PrinterContext {
@@ -30,12 +31,12 @@ interface PrinterContext {
   indentUnit: string;
 }
 
-export function print(root: RootNode, options: PrintOptions = {}): string {
+export function print(document: DocumentNode, options: PrintOptions = {}): string {
   const resolved: Required<PrintOptions> = {
     indentSize: options.indentSize ?? DEFAULT_OPTIONS.indentSize,
     preferCompactSelectors: options.preferCompactSelectors ?? DEFAULT_OPTIONS.preferCompactSelectors,
     spaceAroundPipe: options.spaceAroundPipe ?? DEFAULT_OPTIONS.spaceAroundPipe,
-    normalizePropsSpacing: options.normalizePropsSpacing ?? DEFAULT_OPTIONS.normalizePropsSpacing
+    normalizeInputsSpacing: options.normalizeInputsSpacing ?? DEFAULT_OPTIONS.normalizeInputsSpacing
   };
 
   const ctx: PrinterContext = {
@@ -45,16 +46,28 @@ export function print(root: RootNode, options: PrintOptions = {}): string {
 
   const lines: string[] = [];
 
+  for (const section of document.sections) {
+    if (lines.length > 0) {
+      lines.push('');
+    }
+    lines.push(...printSection(section, ctx));
+  }
+
+  return `${lines.join('\n')}\n`;
+}
+
+function printSection(root: RootNode, ctx: PrinterContext): string[] {
+  const lines: string[] = [];
   const idValue = root.rawId ?? root.id;
   if (idValue) {
     lines.push(`#id ${idValue}`);
-    if (root.props || root.classAliases || root.children.length) {
+    if (root.inputs || root.classAliases || root.children.length) {
       lines.push('');
     }
   }
 
-  if (root.props) {
-    lines.push(...printProps(root.props, ctx));
+  if (root.inputs) {
+    lines.push(...printInputs(root.inputs, ctx));
     if (root.classAliases || root.children.length) {
       lines.push('');
     }
@@ -71,22 +84,22 @@ export function print(root: RootNode, options: PrintOptions = {}): string {
     printNode(child, 0, ctx, lines);
   }
 
-  return `${lines.join('\n')  }\n`;
+  return lines;
 }
 
-function printProps(props: PropsDecl, ctx: PrinterContext): string[] {
-  const lines = ['props'];
-  for (const field of props.fields) {
+function printInputs(inputs: InputsDecl, ctx: PrinterContext): string[] {
+  const lines = ['#inputs'];
+  for (const field of inputs.fields) {
     const indent = createIndent(ctx, 1);
     const optionalFlag = field.optional ? '?' : '';
-    const separator = ctx.options.normalizePropsSpacing ? ': ' : ':';
+    const separator = ctx.options.normalizeInputsSpacing ? ': ' : ':';
     lines.push(`${indent}${field.name}${optionalFlag}${separator}${field.typeText}`);
   }
   return lines;
 }
 
 function printClassAliases(aliases: ClassAliasesDecl, ctx: PrinterContext): string[] {
-  const lines = ['classes'];
+  const lines = ['#classes'];
   for (const alias of aliases.aliases) {
     const indent = createIndent(ctx, 1);
     const rhs = alias.classes.join('.');

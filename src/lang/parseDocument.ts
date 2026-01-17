@@ -1,6 +1,5 @@
 import { Position, type TextDocument } from 'vscode';
 import { parse } from '../format/parser';
-import type { PropsDecl, PropsField } from '../format/parser/ast';
 import type { Diagnostic, SourceSpan } from '../format/parser/diagnostics';
 import type { ParsedDocument } from '.';
 
@@ -96,152 +95,19 @@ function collectTemplateIdDiagnostics(document: TextDocument): Diagnostic[] {
 }
 
 export function parseCollieDocument(document: TextDocument): ParsedDocument {
-  const { root, diagnostics } = parse(document.getText());
-  const propsBlocks = findHashPropsBlocks(document);
-  const filteredDiagnostics = diagnostics.filter(diagnostic => {
-    if (diagnostic.code === 'COLLIE401' || diagnostic.code === 'COLLIE402') {
-      return false;
-    }
-    if (diagnostic.code === 'COLLIE101' || diagnostic.code === 'COLLIE102') {
-      return false;
-    }
-    if (diagnostic.code === 'COLLIE003') {
-      const lineIndex = diagnostic.span?.start?.line ? diagnostic.span.start.line - 1 : -1;
-      if (lineIndex >= 0 && isLineInHashPropsBlock(lineIndex, propsBlocks)) {
-        return false;
-      }
-    }
-    if (diagnostic.code === 'COLLIE004') {
-      const lineIndex = diagnostic.span?.start?.line ? diagnostic.span.start.line - 1 : -1;
-      if (lineIndex >= 0 && isLineInHashPropsBlock(lineIndex, propsBlocks)) {
-        return false;
-      }
-    }
-    return true;
-  });
+  const { document: parsedDocument, diagnostics } = parse(document.getText());
   const templateDiagnostics = collectTemplateIdDiagnostics(document);
-  const combinedDiagnostics = filteredDiagnostics.concat(templateDiagnostics);
+  const combinedDiagnostics = diagnostics.concat(templateDiagnostics);
 
-  const hashProps = parseHashPropsDeclaration(document, propsBlocks);
-  if (hashProps) {
-    root.props = hashProps;
-  }
-
-  if (root.rawId) {
-    root.rawId = undefined;
+  for (const section of parsedDocument.sections) {
+    if (section.rawId) {
+      section.rawId = undefined;
+    }
   }
 
   return {
-    ast: root,
+    ast: parsedDocument,
     diagnostics: combinedDiagnostics,
     version: document.version
   };
-}
-
-interface HashPropsBlock {
-  startLine: number;
-  endLine: number;
-  indent: number;
-  span: SourceSpan;
-}
-
-function findHashPropsBlocks(document: TextDocument): HashPropsBlock[] {
-  const blocks: HashPropsBlock[] = [];
-
-  for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex += 1) {
-    const line = document.lineAt(lineIndex);
-    const trimmed = line.text.trim();
-    if (trimmed !== '#props') {
-      continue;
-    }
-
-    const indent = line.firstNonWhitespaceCharacterIndex;
-    const startCharacter = line.text.indexOf('#props');
-    const span = buildSpan(document, lineIndex, Math.max(startCharacter, 0), '#props'.length);
-    let endLine = lineIndex;
-
-    for (let next = lineIndex + 1; next < document.lineCount; next += 1) {
-      const nextLine = document.lineAt(next);
-      if (nextLine.text.trim().length === 0) {
-        endLine = next;
-        continue;
-      }
-
-      const nextIndent = nextLine.firstNonWhitespaceCharacterIndex;
-      if (nextIndent <= indent) {
-        break;
-      }
-
-      endLine = next;
-    }
-
-    blocks.push({ startLine: lineIndex, endLine, indent, span });
-  }
-
-  return blocks;
-}
-
-function isLineInHashPropsBlock(lineIndex: number, blocks: HashPropsBlock[]): boolean {
-  return blocks.some(block => lineIndex >= block.startLine && lineIndex <= block.endLine);
-}
-
-function parseHashPropsDeclaration(
-  document: TextDocument,
-  blocks: HashPropsBlock[]
-): PropsDecl | undefined {
-  if (blocks.length === 0) {
-    return undefined;
-  }
-
-  const fields: PropsField[] = [];
-  for (const block of blocks) {
-    for (let lineIndex = block.startLine + 1; lineIndex <= block.endLine; lineIndex += 1) {
-      const line = document.lineAt(lineIndex);
-      const trimmed = line.text.trim();
-      if (!trimmed) {
-        continue;
-      }
-
-      const indent = line.firstNonWhitespaceCharacterIndex;
-      if (indent <= block.indent) {
-        continue;
-      }
-
-      const content = line.text.slice(indent);
-      
-      // Try to match new syntax: name or name()
-      const newSyntaxMatch = content.match(/^([A-Za-z_][A-Za-z0-9_]*)(\(\))?$/);
-      if (newSyntaxMatch) {
-        const name = newSyntaxMatch[1];
-        const hasFnSuffix = newSyntaxMatch[2] === '()';
-        const span = buildSpan(document, lineIndex, indent, content.length);
-        fields.push({
-          name,
-          optional: false,
-          typeText: '',
-          kind: hasFnSuffix ? 'fn' : 'value',
-          span
-        });
-        continue;
-      }
-
-      // Try to match legacy syntax: name?: type or name: type
-      const legacyMatch = content.match(/^([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:\s*(.+)$/);
-      if (!legacyMatch) {
-        continue;
-      }
-
-      const name = legacyMatch[1];
-      const optional = legacyMatch[2] === '?';
-      const typeText = legacyMatch[3].trim();
-      const span = buildSpan(document, lineIndex, indent, content.length);
-      
-      // Normalize legacy 'fn' type to kind
-      const kind = typeText === 'fn' ? 'fn' : 'value';
-      
-      fields.push({ name, optional, typeText, kind, span });
-    }
-  }
-
-  return { fields, span: blocks[0].span };
 }

@@ -10,7 +10,7 @@ interface FixPayload {
 interface DiagnosticData {
   fix?: FixPayload;
   kind?: string;
-  propName?: string;
+  inputName?: string;
 }
 
 const DIALECT_TOKEN_PATTERNS = [
@@ -19,7 +19,7 @@ const DIALECT_TOKEN_PATTERNS = [
   { regex: /@else\s+if\b/g, replacement: '@elseIf' }
 ];
 
-const BARE_PROP_PATTERNS = [
+const BARE_INPUT_PATTERNS = [
   /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g,
   /(?<!\{)\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}(?!\})/g,
   /^[ \t]*=\s*([A-Za-z_][A-Za-z0-9_]*)\b/gm
@@ -78,39 +78,50 @@ function collectDialectDiagnostics(document: TextDocument): VSDiagnostic[] {
   return diagnostics;
 }
 
-function collectPropUsageDiagnostics(document: TextDocument, parsed: ParsedDocument | null): VSDiagnostic[] {
-  const declaredProps = new Set(parsed?.ast.props?.fields.map(field => field.name) ?? []);
+function collectInputUsageDiagnostics(document: TextDocument, parsed: ParsedDocument | null): VSDiagnostic[] {
+  if (!parsed) {
+    return [];
+  }
 
   const diagnostics: VSDiagnostic[] = [];
   const text = document.getText();
-  const seen = new Set<string>();
+  const sections = parsed.ast.sections;
 
-  for (const pattern of BARE_PROP_PATTERNS) {
-    const regex = new RegExp(pattern.source, pattern.flags);
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
-      const name = match[1];
-      if (!name || declaredProps.has(name) || seen.has(name)) {
-        continue;
+  for (const section of sections) {
+    const declaredInputs = new Set(section.inputs?.fields.map(field => field.name) ?? []);
+    const seen = new Set<string>();
+    const startOffset = section.span?.start.offset ?? 0;
+    const endOffset = section.span?.end.offset ?? text.length;
+    const sectionText = text.slice(startOffset, endOffset);
+
+    for (const pattern of BARE_INPUT_PATTERNS) {
+      const regex = new RegExp(pattern.source, pattern.flags);
+      let match: RegExpExecArray | null;
+      while ((match = regex.exec(sectionText)) !== null) {
+        const name = match[1];
+        if (!name || declaredInputs.has(name) || seen.has(name)) {
+          continue;
+        }
+        seen.add(name);
+
+        const matchText = match[0];
+        const nameOffset = matchText.lastIndexOf(name);
+        const absoluteIndex = startOffset + match.index + nameOffset;
+        const range = rangeFromIndex(document, absoluteIndex, name.length);
+
+        diagnostics.push(
+          createDiagnostic(
+            range,
+            `Input "${name}" is used but not declared in the inputs block.`,
+            DiagnosticSeverity.Warning,
+            'COLLIE501',
+            {
+              kind: 'addInputDeclaration',
+              inputName: name
+            }
+          )
+        );
       }
-      seen.add(name);
-
-      const matchText = match[0];
-      const nameOffset = matchText.lastIndexOf(name);
-      const range = rangeFromIndex(document, match.index + nameOffset, name.length);
-
-      diagnostics.push(
-        createDiagnostic(
-          range,
-          `Prop "${name}" is used but not declared in the props block.`,
-          DiagnosticSeverity.Warning,
-          'COLLIE501',
-          {
-            kind: 'addPropDeclaration',
-            propName: name
-          }
-        )
-      );
     }
   }
 
@@ -126,7 +137,7 @@ export function collectCompilerDiagnostics(
   const diagnostics: VSDiagnostic[] = [];
 
   diagnostics.push(...collectDialectDiagnostics(document));
-  diagnostics.push(...collectPropUsageDiagnostics(document, parsed));
+  diagnostics.push(...collectInputUsageDiagnostics(document, parsed));
 
   return diagnostics;
 }

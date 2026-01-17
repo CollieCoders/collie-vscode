@@ -4,7 +4,7 @@ import type {
   ElementNode,
   ForLoopNode,
   Node,
-  PropsField,
+  InputsField,
   RootNode,
   TextNode
 } from '../ast';
@@ -95,48 +95,44 @@ export function parseInlineNode(
   return parseElement(trimmed, lineNumber, column, lineOffset, diagnostics);
 }
 
-export function parsePropsField(
+export function parseInputsField(
   line: string,
   lineNumber: number,
   column: number,
   lineOffset: number,
   diagnostics: Diagnostic[]
-): PropsField | null {
-  const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:\s*(.+)$/);
-  if (!match) {
-    pushDiag(
-      diagnostics,
-      'COLLIE102',
-      'Props lines must be in the form `name[:?] Type`.',
-      lineNumber,
-      column,
-      lineOffset,
-      Math.max(line.length, 1)
-    );
+): InputsField | null {
+  void diagnostics;
+  const newSyntaxMatch = line.match(/^([A-Za-z_][A-Za-z0-9_]*)(\(\))?$/);
+  if (newSyntaxMatch) {
+    const name = newSyntaxMatch[1];
+    const hasFnSuffix = newSyntaxMatch[2] === '()';
+    const span = createSpan(lineNumber, column, Math.max(line.length, 1), lineOffset);
+    return {
+      name,
+      optional: false,
+      typeText: '',
+      kind: hasFnSuffix ? 'fn' : 'value',
+      span
+    };
+  }
+
+  const legacyMatch = line.match(/^([A-Za-z_][A-Za-z0-9_]*)(\??)\s*:\s*(.+)$/);
+  if (!legacyMatch) {
     return null;
   }
 
-  const [, name, optionalFlag, typePart] = match;
-  const typeText = typePart.trim();
-  if (!typeText) {
-    pushDiag(
-      diagnostics,
-      'COLLIE102',
-      'Props lines must provide a type after the colon.',
-      lineNumber,
-      column,
-      lineOffset,
-      Math.max(line.length, 1)
-    );
-    return null;
-  }
-
+  const name = legacyMatch[1];
+  const optional = legacyMatch[2] === '?';
+  const typeText = legacyMatch[3].trim();
   const span = createSpan(lineNumber, column, Math.max(line.length, 1), lineOffset);
+  const kind = typeText === 'fn' ? 'fn' : 'value';
 
   return {
     name,
-    optional: optionalFlag === '?',
+    optional,
     typeText,
+    kind,
     span
   };
 }
@@ -151,7 +147,7 @@ export function parseElement(
   const span = createSpan(lineNumber, column, Math.max(line.length, 1), lineOffset);
   // Split selector-style syntax first (div.welcome.big)
   const selectorMatch = line.match(
-    /^([A-Za-z][A-Za-z0-9_$]*)(\.(?:[A-Za-z0-9_-]+|\$[A-Za-z_][A-Za-z0-9_]*))*/
+    /^([A-Za-z][A-Za-z0-9_$]*)(\.(?:[A-Za-z0-9_-]+|\$[A-Za-z_][A-Za-z0-9_-]*))*/
   );
   if (!selectorMatch) {
     pushDiag(
@@ -293,6 +289,16 @@ export function parseElement(
       break;
     }
 
+    const trimmedInline = rest.trimEnd();
+    pushDiag(
+      diagnostics,
+      'COLLIE004',
+      'Inline text must start with |.',
+      lineNumber,
+      column + consumed,
+      lineOffset,
+      Math.max(trimmedInline.length, 1)
+    );
     inlineText = parseInlineTextPayload(
       rest,
       lineNumber,
@@ -329,7 +335,7 @@ export function parseClassAliasLine(
   lineOffset: number,
   diagnostics: Diagnostic[]
 ): ClassAliasDecl | null {
-  const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$/);
+  const match = line.match(/^([A-Za-z_][A-Za-z0-9_-]*)\s*=\s*(.+)$/);
   if (!match) {
     pushDiag(
       diagnostics,
@@ -344,7 +350,7 @@ export function parseClassAliasLine(
   }
 
   const [, name, rhsRaw] = match;
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+  if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) {
     pushDiag(
       diagnostics,
       'COLLIE305',
@@ -429,7 +435,7 @@ export function validateNodeClassAliases(
     const { classes, classSpans } = node;
     for (let index = 0; index < classes.length; index++) {
       const token = classes[index];
-      const match = token.match(/^\$([A-Za-z_][A-Za-z0-9_]*)$/);
+      const match = token.match(/^\$([A-Za-z_][A-Za-z0-9_-]*)$/);
       if (!match) {
         continue;
       }

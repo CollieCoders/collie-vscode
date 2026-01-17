@@ -22,9 +22,15 @@ const ID_DIRECTIVE_WITH_VALUE_PATTERN = /^(\s*(?:#|)id(?:\s+|:\s*|=\s*))(.*)$/i;
 const TEMPLATE_ID_PATTERN = /^[A-Za-z][A-Za-z0-9._-]*$/;
 const COLLIE_GLOB = '**/*.collie';
 const COLLIE_EXCLUDE_GLOB = '**/node_modules/**';
-const DEFAULT_PROP_TYPE = 'unknown';
-const FILE_IGNORE_PATTERN = /^\s*#collie-ignore-file\s+(.+?)\s*$/;
-const LINE_IGNORE_PATTERN = /^\s*#collie-ignore-next-line\s+(.+?)\s*$/;
+const DEFAULT_INPUT_TYPE = 'unknown';
+const FILE_IGNORE_PATTERNS = [
+  /^\s*\/\/\s*collie-ignore-file\s+(.+?)\s*$/,
+  /^\s*#collie-ignore-file\s+(.+?)\s*$/
+];
+const LINE_IGNORE_PATTERNS = [
+  /^\s*\/\/\s*collie-ignore-next-line\s+(.+?)\s*$/,
+  /^\s*#collie-ignore-next-line\s+(.+?)\s*$/
+];
 
 let templateIndexVersion = 0;
 let cachedTemplateEntriesVersion = -1;
@@ -39,7 +45,7 @@ interface DiagnosticFix {
 interface DiagnosticData {
   fix?: DiagnosticFix;
   kind?: string;
-  propName?: string;
+  inputName?: string;
 }
 
 function escapeRegExp(value: string): string {
@@ -53,6 +59,16 @@ function getEol(document: TextDocument): string {
 function getIndentSize(): number {
   const config = workspace.getConfiguration('collie');
   return Math.max(1, config.get<number>('format.indentSize', 2));
+}
+
+function matchIgnorePattern(line: string, patterns: RegExp[]): RegExpExecArray | null {
+  for (const pattern of patterns) {
+    const match = pattern.exec(line);
+    if (match) {
+      return match;
+    }
+  }
+  return null;
 }
 
 function invalidateTemplateEntryCache(): void {
@@ -93,17 +109,21 @@ async function getTemplateEntriesById(): Promise<Map<string, TemplateLocation[]>
   return cachedTemplateEntriesPromise;
 }
 
-function findPropsBlock(document: TextDocument): { line: number; indent: number; insertLine: number } | null {
-  for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+function findInputsBlock(
+  document: TextDocument,
+  startLine: number,
+  endLine: number
+): { line: number; indent: number; insertLine: number } | null {
+  for (let lineNumber = startLine; lineNumber < endLine; lineNumber++) {
     const line = document.lineAt(lineNumber);
-    if (line.text.trim() !== 'props') {
+    if (line.text.trim() !== '#inputs') {
       continue;
     }
 
-    const propsIndent = line.firstNonWhitespaceCharacterIndex;
+    const inputsIndent = line.firstNonWhitespaceCharacterIndex;
     let insertLine = lineNumber + 1;
 
-    for (let i = lineNumber + 1; i < document.lineCount; i++) {
+    for (let i = lineNumber + 1; i < endLine; i++) {
       const nextLine = document.lineAt(i);
       const trimmed = nextLine.text.trim();
 
@@ -111,27 +131,27 @@ function findPropsBlock(document: TextDocument): { line: number; indent: number;
         continue;
       }
 
-      if (nextLine.firstNonWhitespaceCharacterIndex <= propsIndent) {
+      if (nextLine.firstNonWhitespaceCharacterIndex <= inputsIndent) {
         insertLine = i;
-        return { line: lineNumber, indent: propsIndent, insertLine };
+        return { line: lineNumber, indent: inputsIndent, insertLine };
       }
 
       insertLine = i + 1;
     }
 
-    return { line: lineNumber, indent: propsIndent, insertLine };
+    return { line: lineNumber, indent: inputsIndent, insertLine };
   }
 
   return null;
 }
 
-function hasPropDeclarationInBlock(
+function hasInputDeclarationInBlock(
   document: TextDocument,
-  propsBlock: { line: number; indent: number; insertLine: number },
-  propName: string
+  inputsBlock: { line: number; indent: number; insertLine: number },
+  inputName: string
 ): boolean {
-  const propPattern = new RegExp(`^${escapeRegExp(propName)}\\??\\s*:`);
-  for (let i = propsBlock.line + 1; i < document.lineCount; i++) {
+  const inputPattern = new RegExp(`^${escapeRegExp(inputName)}\\??\\s*:`);
+  for (let i = inputsBlock.line + 1; i < document.lineCount; i++) {
     const line = document.lineAt(i);
     const trimmed = line.text.trim();
 
@@ -140,11 +160,11 @@ function hasPropDeclarationInBlock(
     }
 
     const indent = line.firstNonWhitespaceCharacterIndex;
-    if (indent <= propsBlock.indent) {
+    if (indent <= inputsBlock.indent) {
       break;
     }
 
-    if (propPattern.test(trimmed)) {
+    if (inputPattern.test(trimmed)) {
       return true;
     }
   }
@@ -152,8 +172,12 @@ function hasPropDeclarationInBlock(
   return false;
 }
 
-function findInsertLineForNewPropsBlock(document: TextDocument): number {
-  for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+function findInsertLineForNewInputsBlock(
+  document: TextDocument,
+  startLine: number,
+  endLine: number
+): number {
+  for (let lineNumber = startLine; lineNumber < endLine; lineNumber++) {
     const line = document.lineAt(lineNumber);
     const trimmed = line.text.trim();
 
@@ -168,7 +192,7 @@ function findInsertLineForNewPropsBlock(document: TextDocument): number {
     return lineNumber;
   }
 
-  return 0;
+  return startLine;
 }
 
 function getInsertPosition(
@@ -214,14 +238,40 @@ function buildDialectFixAction(
   return action;
 }
 
-function buildRemovePropAction(
+function buildRemoveInputAction(
   document: TextDocument,
   diagnostic: Diagnostic,
   fix: DiagnosticFix
 ): CodeAction {
-  const action = new CodeAction('Remove unused prop declaration', CodeActionKind.QuickFix);
+  const action = new CodeAction('Remove unused input declaration', CodeActionKind.QuickFix);
   const edit = new WorkspaceEdit();
   edit.replace(document.uri, fix.range, fix.replacementText);
+  action.edit = edit;
+  action.diagnostics = [diagnostic];
+  return action;
+}
+
+function buildInlineTextPrefixAction(
+  document: TextDocument,
+  diagnostic: Diagnostic
+): CodeAction | null {
+  if (diagnostic.code !== 'COLLIE004') {
+    return null;
+  }
+  if (diagnostic.message !== 'Inline text must start with |.') {
+    return null;
+  }
+
+  const start = diagnostic.range.start;
+  const line = document.lineAt(start.line).text;
+  if (start.character >= line.length || line[start.character] === '|') {
+    return null;
+  }
+
+  const edit = new WorkspaceEdit();
+  edit.insert(document.uri, start, '| ');
+
+  const action = new CodeAction('Prefix inline text with "|"', CodeActionKind.QuickFix);
   action.edit = edit;
   action.diagnostics = [diagnostic];
   return action;
@@ -240,45 +290,67 @@ function buildPascalCaseIdAction(
   return action;
 }
 
-function buildAddPropDeclarationAction(
+function buildAddInputDeclarationAction(
   document: TextDocument,
   diagnostic: Diagnostic,
-  propName: string
+  inputName: string
 ): CodeAction | null {
-  const propsBlock = findPropsBlock(document);
-  if (propsBlock && hasPropDeclarationInBlock(document, propsBlock, propName)) {
+  const diagnosticLine = diagnostic.range.start.line;
+  const sectionBounds = findSectionBounds(document, diagnosticLine);
+  const inputsBlock = findInputsBlock(document, sectionBounds.startLine, sectionBounds.endLine);
+  if (inputsBlock && hasInputDeclarationInBlock(document, inputsBlock, inputName)) {
     return null;
   }
 
   const indentSize = getIndentSize();
   const eol = getEol(document);
-  const propLine = `${' '.repeat((propsBlock?.indent ?? 0) + indentSize)}${propName}: ${DEFAULT_PROP_TYPE}`;
+  const inputLine = `${' '.repeat((inputsBlock?.indent ?? 0) + indentSize)}${inputName}: ${DEFAULT_INPUT_TYPE}`;
 
   let insertLine = 0;
   let insertText = '';
 
-  if (propsBlock) {
-    insertLine = propsBlock.insertLine;
-    insertText = `${propLine}${eol}`;
+  if (inputsBlock) {
+    insertLine = inputsBlock.insertLine;
+    insertText = `${inputLine}${eol}`;
   } else {
-    insertLine = findInsertLineForNewPropsBlock(document);
-    insertText = `props${eol}${propLine}${eol}${eol}`;
+    insertLine = findInsertLineForNewInputsBlock(document, sectionBounds.startLine, sectionBounds.endLine);
+    insertText = `#inputs${eol}${inputLine}${eol}${eol}`;
   }
 
   const { position, prefix } = getInsertPosition(document, insertLine);
   const edit = new WorkspaceEdit();
   edit.insert(document.uri, position, `${prefix}${insertText}`);
 
-  const action = new CodeAction(`Add "${propName}" to props block`, CodeActionKind.QuickFix);
+  const action = new CodeAction(`Add "${inputName}" to inputs block`, CodeActionKind.QuickFix);
   action.edit = edit;
   action.diagnostics = [diagnostic];
   return action;
 }
 
+function findSectionBounds(
+  document: TextDocument,
+  startLine: number
+): { startLine: number; endLine: number } {
+  const nearest = findNearestIdDirective(document, startLine);
+  const sectionStartLine = nearest?.line ?? 0;
+  let sectionEndLine = document.lineCount;
+
+  for (let lineNumber = sectionStartLine + 1; lineNumber < document.lineCount; lineNumber++) {
+    const line = document.lineAt(lineNumber);
+    const trimmed = line.text.trim();
+    if (ID_DIRECTIVE_PATTERN.test(trimmed) && line.firstNonWhitespaceCharacterIndex === 0) {
+      sectionEndLine = lineNumber;
+      break;
+    }
+  }
+
+  return { startLine: sectionStartLine, endLine: sectionEndLine };
+}
+
 function hasFileIgnoreDirective(document: TextDocument, code: string): boolean {
   for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
     const line = document.lineAt(lineNumber).text;
-    const match = FILE_IGNORE_PATTERN.exec(line);
+    const match = matchIgnorePattern(line, FILE_IGNORE_PATTERNS);
     if (match) {
       const codes = match[1].trim().split(/\s+/);
       if (codes.includes(code)) {
@@ -294,7 +366,7 @@ function hasLineIgnoreDirective(document: TextDocument, lineNumber: number, code
     return false;
   }
   const previousLine = document.lineAt(lineNumber - 1).text;
-  const match = LINE_IGNORE_PATTERN.exec(previousLine);
+  const match = matchIgnorePattern(previousLine, LINE_IGNORE_PATTERNS);
   if (match) {
     const codes = match[1].trim().split(/\s+/);
     return codes.includes(code);
@@ -317,7 +389,7 @@ function buildIgnoreOnLineAction(
   const targetLine = document.lineAt(diagnosticLine);
   const indent = ' '.repeat(targetLine.firstNonWhitespaceCharacterIndex);
   const eol = getEol(document);
-  const directiveText = `${indent}#collie-ignore-next-line ${code}${eol}`;
+  const directiveText = `${indent}// collie-ignore-next-line ${code}${eol}`;
 
   const edit = new WorkspaceEdit();
   edit.insert(document.uri, targetLine.range.start, directiveText);
@@ -363,7 +435,7 @@ function buildIgnoreInFileAction(
     break;
   }
 
-  const directiveText = `#collie-ignore-file ${code}${eol}`;
+  const directiveText = `// collie-ignore-file ${code}${eol}`;
   const { position, prefix } = getInsertPosition(document, insertLine);
   
   const edit = new WorkspaceEdit();
@@ -469,6 +541,7 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
       // Extract the template ID from the diagnostic message
       const match =
         diagnostic.message.match(/Duplicate Collie template id "([^"]+)"/) ??
+        diagnostic.message.match(/Duplicate template id "([^"]+)"/) ??
         diagnostic.message.match(/Duplicate #id "([^"]+)"/);
       if (!match) {
         continue;
@@ -510,7 +583,7 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
       }
     }
 
-    // Compiler-provided fixes and props actions
+    // Compiler-provided fixes and inputs actions
     const actionableDiagnostics = diagnostics.filter(diag => diag.range.intersection(range));
     for (const diagnostic of actionableDiagnostics) {
       // Add ignore quick fixes for diagnostics with string codes
@@ -524,6 +597,11 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
         if (ignoreFileAction) {
           actions.push(ignoreFileAction);
         }
+      }
+
+      const inlineTextAction = buildInlineTextPrefixAction(document, diagnostic);
+      if (inlineTextAction) {
+        actions.push(inlineTextAction);
       }
 
       const data = diagnostic as DiagnosticData | undefined;
@@ -542,13 +620,13 @@ class CollieIdCodeActionProvider implements CodeActionProvider {
         actions.push(buildDialectFixAction(document, diagnostic, data.fix));
       }
 
-        if (data.kind === 'removePropDeclaration') {
-          actions.push(buildRemovePropDeclaration(document, diagnostic, data.fix));
+        if (data.kind === 'removeInputDeclaration') {
+          actions.push(buildRemoveInputAction(document, diagnostic, data.fix));
         }
       }
 
-      if (data.kind === 'addPropDeclaration' && data.propName) {
-        const action = buildAddPropDeclarationAction(document, diagnostic, data.propName);
+      if (data.kind === 'addInputDeclaration' && data.inputName) {
+        const action = buildAddInputDeclarationAction(document, diagnostic, data.inputName);
         if (action) {
           actions.push(action);
         }
