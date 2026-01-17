@@ -146,7 +146,10 @@ function collectInputsFromJsx(
   return { inputs, sawSpread };
 }
 
-function collectUnknownTemplateIdDiagnostics(document: TextDocument): VSDiagnostic[] {
+function collectUnknownTemplateIdDiagnostics(
+  document: TextDocument,
+  sourceFile: ts.SourceFile
+): VSDiagnostic[] {
   if (!isFeatureFlagEnabled('diagnostics')) {
     return [];
   }
@@ -157,14 +160,6 @@ function collectUnknownTemplateIdDiagnostics(document: TextDocument): VSDiagnost
   }
 
   const knownIds = new Set(ids);
-  const sourceFile = ts.createSourceFile(
-    document.uri.fsPath,
-    document.getText(),
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX
-  );
-
   const diagnostics: VSDiagnostic[] = [];
 
   const visit = (node: ts.Node): void => {
@@ -204,6 +199,74 @@ function collectUnknownTemplateIdDiagnostics(document: TextDocument): VSDiagnost
           diagnostic.code = 'COLLIE701';
           diagnostic.source = 'collie';
           diagnostics.push(diagnostic);
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return diagnostics;
+}
+
+function collectAmbiguousInputMappingDiagnostics(
+  document: TextDocument,
+  sourceFile: ts.SourceFile
+): VSDiagnostic[] {
+  if (!isFeatureFlagEnabled('diagnostics')) {
+    return [];
+  }
+
+  const diagnostics: VSDiagnostic[] = [];
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
+      const tagName = node.tagName;
+      if (ts.isIdentifier(tagName) && COLLIE_COMPONENT_NAMES.has(tagName.text)) {
+        for (const attr of node.attributes.properties) {
+          if (!ts.isJsxAttribute(attr) || !ts.isIdentifier(attr.name)) {
+            continue;
+          }
+
+          if (attr.name.text !== 'inputs') {
+            continue;
+          }
+
+          const initializer = attr.initializer;
+          if (!initializer || !ts.isJsxExpression(initializer)) {
+            continue;
+          }
+
+          const expression = initializer.expression;
+          if (!expression || !ts.isObjectLiteralExpression(expression)) {
+            continue;
+          }
+
+          for (const property of expression.properties) {
+            if (!ts.isShorthandPropertyAssignment(property)) {
+              continue;
+            }
+
+            const name = property.name.text;
+            if (name.length > 2) {
+              continue;
+            }
+
+            const range = new Range(
+              document.positionAt(property.name.getStart(sourceFile)),
+              document.positionAt(property.name.getEnd())
+            );
+
+            const diagnostic = new VSDiagnostic(
+              range,
+              `Consider explicit inputs mapping: inputs={{ animal: ${name} }} for clearer Collie #inputs keys.`,
+              DiagnosticSeverity.Hint
+            );
+            diagnostic.code = 'COLLIE702';
+            diagnostic.source = 'collie';
+            diagnostics.push(diagnostic);
+          }
         }
       }
     }
@@ -424,7 +487,15 @@ function updateTemplateUsageDiagnostics(
     return;
   }
 
-  const diagnostics = collectUnknownTemplateIdDiagnostics(document);
+  const sourceFile = ts.createSourceFile(
+    document.uri.fsPath,
+    document.getText(),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+  const diagnostics = collectUnknownTemplateIdDiagnostics(document, sourceFile);
+  diagnostics.push(...collectAmbiguousInputMappingDiagnostics(document, sourceFile));
   templateUsageCache.set(cacheKey, {
     documentVersion: document.version,
     templateIndexVersion,
